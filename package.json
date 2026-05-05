@@ -10,7 +10,11 @@
     "dev": "pnpm --filter @constellation/viewer dev",
     "typecheck": "pnpm --filter @constellation/viewer typecheck",
     "test": "pnpm --filter @constellation/viewer test",
-    "test:e2e": "pnpm --filter @constellation/viewer test:e2e"
+    "test:e2e": "pnpm --filter @constellation/viewer test:e2e",
+    "studio:sync": "set -a; . ./.env; set +a; unset VIRTUAL_ENV; uv --directory studio sync --inexact",
+    "studio:embed": "set -a; . ./.env; set +a; unset VIRTUAL_ENV; uv --project studio run constellation-embed",
+    "studio:serve": "set -a; . ./.env; set +a; unset VIRTUAL_ENV; uv --project studio run constellation-serve",
+    "studio:test": "set -a; . ./.env; set +a; unset VIRTUAL_ENV; uv --project studio run pytest"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
