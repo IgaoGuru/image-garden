@@ -1,0 +1,18 @@
+{
+  "name": "constellation-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Constellation image embedding 3D explorer monorepo",
+  "type": "module",
+  "packageManager": "pnpm@10.11.0",
+  "scripts": {
+    "build": "pnpm --filter @constellation/viewer build",
+    "dev": "pnpm --filter @constellation/viewer dev",
+    "typecheck": "pnpm --filter @constellation/viewer typecheck",
+    "test": "pnpm --filter @constellation/viewer test",
+    "test:e2e": "pnpm --filter @constellation/viewer test:e2e"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

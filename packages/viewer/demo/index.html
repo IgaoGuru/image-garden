@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Constellation Viewer Demo</title>
+    <style>
+      html,
+      body,
+      #app {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #05050a;
+        color: white;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .hud {
+        position: fixed;
+        left: 16px;
+        top: 16px;
+        z-index: 1;
+        max-width: 360px;
+        padding: 12px 14px;
+        border: 1px solid rgb(255 255 255 / 0.14);
+        border-radius: 12px;
+        background: rgb(0 0 0 / 0.42);
+        backdrop-filter: blur(10px);
+        line-height: 1.4;
+      }
+      .hud h1 {
+        margin: 0 0 4px;
+        font-size: 15px;
+      }
+      .hud p {
+        margin: 0;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+      .selected {
+        margin-top: 8px !important;
+        color: #ffcc66;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hud">
+      <h1>Constellation Viewer Demo</h1>
+      <p>Click the scene to lock pointer. WASD to fly, Shift to sprint, Space/E up, Q/C down, Esc to unlock.</p>
+      <p id="selected" class="selected">No image selected.</p>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
