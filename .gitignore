@@ -3,6 +3,12 @@ dist/
 coverage/
 test-results/
 playwright-report/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.basedpyright/
+.venv/
 .DS_Store
 .env
 .env.*
