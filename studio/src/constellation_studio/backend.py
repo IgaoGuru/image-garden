@@ -29,6 +29,7 @@ from constellation_studio.embed import (
 from constellation_studio.embedding_providers import (
     EmbeddingProvider,
     create_embedding_provider,
+    preflight_embedding_provider,
 )
 from constellation_studio.index_store import IndexStore
 from constellation_studio.indexing import (
@@ -162,7 +163,10 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         if route in {"/", "/index.html"}:
             self._send_playview_index(send_body=send_body)
             return
-        if route.startswith("/assets/") and self.playview_dist is not None:
+        if (
+            route.startswith(("/assets/", "/audio/"))
+            and self.playview_dist is not None
+        ):
             path = resolve_below(
                 self.playview_dist,
                 route.removeprefix("/"),
@@ -892,6 +896,7 @@ def run(args: argparse.Namespace) -> int:
         onnx_model=config.onnx_model,
         onnx_provider=config.onnx_provider,
     )
+    preflight_embedding_provider(embedding_provider)
     if embedding_provider is not None:
         store.set_embedding_engine(embedding_provider.cache_namespace)
     else:

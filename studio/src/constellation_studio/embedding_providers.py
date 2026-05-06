@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -138,6 +139,10 @@ class OnnxClipEmbeddingProvider:
         outputs = session.run(None, {input_name: batch})
         return normalize_embedding_rows(select_embedding_output(outputs))
 
+    def preflight(self) -> None:
+        """Validate ONNX Runtime, model file, and provider before serving."""
+        _session, _input_name = self.session_info
+
     @property
     def session_info(self) -> tuple[Any, str]:
         """Return a lazily created ONNX Runtime session and IO names."""
@@ -147,11 +152,7 @@ class OnnxClipEmbeddingProvider:
             except (
                 ImportError
             ) as exc:  # pragma: no cover - environment dependent
-                msg = (
-                    "ONNX Runtime is not installed. Install the consumer ONNX "
-                    "runtime package or choose the OpenCLIP advanced engine."
-                )
-                raise RuntimeError(msg) from exc
+                raise RuntimeError(onnx_runtime_missing_message()) from exc
 
             model_path = self.model_path.expanduser().resolve()
             if not model_path.is_file():
@@ -210,6 +211,28 @@ def create_embedding_provider(  # noqa: PLR0913
         )
     msg = f"unknown embedding engine: {engine}"
     raise ValueError(msg)
+
+
+def preflight_embedding_provider(provider: EmbeddingProvider | None) -> None:
+    """Fail fast for provider/runtime issues before opening the app UI."""
+    if isinstance(provider, OnnxClipEmbeddingProvider):
+        provider.preflight()
+
+
+def ensure_onnx_runtime_available() -> None:
+    """Raise a friendly error when the ONNX extra is not installed."""
+    if importlib.util.find_spec("onnxruntime") is None:
+        raise RuntimeError(onnx_runtime_missing_message())
+
+
+def onnx_runtime_missing_message() -> str:
+    """Return the user-facing ONNX Runtime installation guidance."""
+    return (
+        "ONNX Runtime is not installed. Run `pnpm studio:sync` or "
+        "`uv --project studio sync --extra onnx`, then restart "
+        "Constellation. You can also choose the OpenCLIP advanced engine "
+        "with `--embedding-engine openclip`."
+    )
 
 
 def deterministic_embedding(path: Path, dimensions: int) -> Embedding:

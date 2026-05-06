@@ -12,11 +12,12 @@ button:hover:not(:disabled), button:focus-visible { border-color: rgba(246,241,2
 button:disabled { cursor: not-allowed; opacity: .42; }
 input { width: 100%; color: #f6f1e8; background: #050505; border: 1px solid rgba(246,241,232,.24); padding: 11px 12px; outline: none; }
 input:focus { border-color: rgba(246,241,232,.72); }
+input[type="range"] { padding: 0; accent-color: #f6f1e8; }
 
 #viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; opacity: 0; transition: opacity 1400ms ease; }
 #viewer.visible { opacity: 1; }
 #status { position: fixed; left: 18px; bottom: 16px; z-index: 5; max-width: calc(100vw - 36px); color: rgba(246,241,232,.54); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-#help-text { position: fixed; left: 50%; bottom: 52px; z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
+#help-text { position: fixed; left: 50%; bottom: clamp(96px, 14vh, 160px); z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
 #help-text.visible { opacity: 1; }
 #help-text kbd { color: rgba(246,241,232,.86); font: inherit; }
 .mouse-icon { color: rgba(246,241,232,.82); }
@@ -56,6 +57,9 @@ input:focus { border-color: rgba(246,241,232,.72); }
 .menu-panel { width: min(360px, calc(100vw - 42px)); display: grid; gap: 8px; padding: 18px; border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); }
 .menu-panel button { width: 100%; text-align: left; border-color: transparent; color: rgba(246,241,232,.72); }
 .menu-panel button:hover, .menu-panel button:focus-visible { color: #f6f1e8; border-color: rgba(246,241,232,.26); }
+.menu-control { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 10px; align-items: center; margin-bottom: 8px; padding: 0 0 14px; border-bottom: 1px solid rgba(246,241,232,.12); color: rgba(246,241,232,.68); font-size: 12px; }
+.menu-control output { min-width: 4ch; text-align: right; color: rgba(246,241,232,.84); font-variant-numeric: tabular-nums; }
+.menu-control span { grid-column: 1 / -1; color: rgba(246,241,232,.42); font-size: 11px; }
 .debug { display: none; max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid rgba(246,241,232,.12); color: rgba(246,241,232,.62); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .debug.visible { display: block; }
 .fallback { padding: 20px; overflow: auto; opacity: 1 !important; }

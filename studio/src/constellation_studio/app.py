@@ -16,6 +16,9 @@ from constellation_studio.embed import (
     DEFAULT_MODEL,
     DEFAULT_PRETRAINED,
 )
+from constellation_studio.embedding_providers import (
+    ensure_onnx_runtime_available,
+)
 
 
 def default_app_data_dir() -> Path:
@@ -191,6 +194,8 @@ def run(args: argparse.Namespace) -> int:
     )
     if onnx_model is None:
         onnx_model = find_bundled_onnx_model(search_start)
+    if engine in {"auto", "onnx"}:
+        ensure_onnx_runtime_available()
     if engine == "auto":
         if onnx_model is None:
             onnx_model = download_onnx_model(
@@ -231,7 +236,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         normalized_argv = normalized_argv[1:]
     parser = build_parser()
     args = parser.parse_args(normalized_argv)
-    return run(args)
+    try:
+        return run(args)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

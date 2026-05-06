@@ -41,6 +41,9 @@ const starfield = mustQuery<HTMLElement>('#starfield');
 const progressLog = mustQuery<HTMLElement>('#progress-log');
 const menu = mustQuery<HTMLElement>('#menu');
 const debug = mustQuery<HTMLElement>('#debug');
+const windVolumeInput = mustQuery<HTMLInputElement>('#wind-volume');
+const windVolumeValue = mustQuery<HTMLOutputElement>('#wind-volume-value');
+const windStatus = mustQuery<HTMLElement>('#wind-status');
 const desktop = window.constellationDesktop;
 
 let viewerInstance: ConstellationViewer | null = null;
@@ -68,6 +71,10 @@ const tutorialSteps = [
 ] as const;
 const spinnerFrames = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠'];
 const progressLogEntries: string[] = [];
+const windVolumeStorageKey = 'constellation.windVolume';
+const windAmbienceUrl = '/audio/wind-ambience.mp3';
+
+setupWindAmbience();
 
 window.setInterval(() => {
   if (!progress.classList.contains('visible') || progressLogEntries.length === 0) return;
@@ -155,6 +162,98 @@ async function handleMenuAction(action: string): Promise<void> {
   if (action === 'open-data') await postJson('/api/system/open-data-dir', {});
   if (action === 'clear-data') await clearData();
   if (action === 'debug') await showDebug();
+}
+
+function setupWindAmbience(): void {
+  const audio = new Audio(windAmbienceUrl);
+  audio.loop = true;
+  audio.preload = 'auto';
+
+  let started = false;
+  let playAttemptInFlight = false;
+
+  const savedVolume = readStoredPercent(windVolumeStorageKey, 30);
+  windVolumeInput.value = String(savedVolume);
+  applyVolume(savedVolume);
+
+  const start = (): void => {
+    if (started || playAttemptInFlight || audio.volume <= 0) return;
+    playAttemptInFlight = true;
+    void audio
+      .play()
+      .then(() => {
+        started = true;
+        windStatus.textContent = 'wind ambience playing';
+        removeGestureListeners();
+      })
+      .catch(() => {
+        windStatus.textContent = 'click again or move the slider to start ambience';
+      })
+      .finally(() => {
+        playAttemptInFlight = false;
+      });
+  };
+
+  const onGesture = (): void => start();
+
+  function addGestureListeners(): void {
+    window.addEventListener('pointerdown', onGesture, { passive: true });
+    window.addEventListener('keydown', onGesture);
+  }
+
+  function removeGestureListeners(): void {
+    window.removeEventListener('pointerdown', onGesture);
+    window.removeEventListener('keydown', onGesture);
+  }
+
+  addGestureListeners();
+
+  windVolumeInput.addEventListener('input', () => {
+    const volume = Number(windVolumeInput.value);
+    writeStoredPercent(windVolumeStorageKey, volume);
+    applyVolume(volume);
+    if (volume > 0) {
+      start();
+    } else {
+      audio.pause();
+      started = false;
+      windStatus.textContent = 'wind ambience off';
+      addGestureListeners();
+    }
+  });
+
+  function applyVolume(value: number): void {
+    const clamped = clampPercent(value);
+    audio.volume = clamped / 100;
+    audio.muted = clamped === 0;
+    windVolumeValue.value = `${clamped}%`;
+    windVolumeValue.textContent = `${clamped}%`;
+    if (!started) {
+      windStatus.textContent = clamped > 0 ? 'click the constellation to start ambience' : 'wind ambience off';
+    }
+  }
+}
+
+function readStoredPercent(key: string, fallback: number): number {
+  try {
+    const rawValue = window.localStorage.getItem(key);
+    if (rawValue === null) return fallback;
+    return clampPercent(Number(rawValue));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredPercent(key: string, value: number): void {
+  try {
+    window.localStorage.setItem(key, String(clampPercent(value)));
+  } catch {
+    // Ignore storage failures; the slider still controls this session.
+  }
+}
+
+function clampPercent(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 0;
 }
 
 function showOnboarding(): void {

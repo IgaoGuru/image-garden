@@ -61,6 +61,9 @@ def create_playview_dist(path: Path) -> Path:
     assets = path / "assets"
     assets.mkdir()
     (assets / "app.js").write_text("console.log('playview')\n")
+    audio = path / "audio"
+    audio.mkdir()
+    (audio / "wind-ambience.mp3").write_bytes(b"fake mp3")
     return path
 
 
@@ -294,6 +297,14 @@ def test_backend_import_studio_route(tmp_path: Path) -> None:
         assert fetch_bytes(f"{base_url}api/files/studio-one").startswith(
             b"\xff\xd8"
         )
+
+
+def test_backend_serves_playview_public_audio(tmp_path: Path) -> None:
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        playview_dist=create_playview_dist(tmp_path / "playview-dist"),
+    ) as base_url:
+        assert fetch_bytes(f"{base_url}audio/wind-ambience.mp3") == b"fake mp3"
 
 
 def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
