@@ -172,7 +172,7 @@ function setupWindAmbience(): void {
   let started = false;
   let playAttemptInFlight = false;
 
-  const savedVolume = readStoredPercent(windVolumeStorageKey, 30);
+  const savedVolume = readStoredPercent(windVolumeStorageKey, 70);
   windVolumeInput.value = String(savedVolume);
   applyVolume(savedVolume);
 
@@ -226,6 +226,7 @@ function setupWindAmbience(): void {
     const clamped = clampPercent(value);
     audio.volume = clamped / 100;
     audio.muted = clamped === 0;
+    windVolumeInput.style.setProperty('--volume', `${clamped}%`);
     windVolumeValue.value = `${clamped}%`;
     windVolumeValue.textContent = `${clamped}%`;
     if (!started) {

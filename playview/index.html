@@ -19,21 +19,23 @@
       </div>
     </section>
     <section id="menu" aria-hidden="true">
-      <div class="menu-panel" role="dialog" aria-label="menu">
+      <div class="menu-stack">
+        <div class="menu-panel" role="dialog" aria-label="menu">
+          <button type="button" data-menu="reset-camera">reset camera</button>
+          <button type="button" data-menu="fit-constellation">fit constellation</button>
+          <button type="button" data-menu="reimport">reimport last folder</button>
+          <button type="button" data-menu="open-data">open data folder</button>
+          <button type="button" data-menu="clear-data">clear data</button>
+          <button type="button" data-menu="debug">debug status</button>
+          <button type="button" data-menu="close">close</button>
+          <pre id="debug" class="debug"></pre>
+        </div>
         <div class="menu-control" aria-label="wind ambience volume">
           <label for="wind-volume">wind</label>
           <input id="wind-volume" type="range" min="0" max="100" step="1" />
-          <output id="wind-volume-value" for="wind-volume">30%</output>
+          <output id="wind-volume-value" for="wind-volume">70%</output>
           <span id="wind-status">click the constellation to start ambience</span>
         </div>
-        <button type="button" data-menu="reset-camera">reset camera</button>
-        <button type="button" data-menu="fit-constellation">fit constellation</button>
-        <button type="button" data-menu="reimport">reimport last folder</button>
-        <button type="button" data-menu="open-data">open data folder</button>
-        <button type="button" data-menu="clear-data">clear data</button>
-        <button type="button" data-menu="debug">debug status</button>
-        <button type="button" data-menu="close">close</button>
-        <pre id="debug" class="debug"></pre>
       </div>
     </section>
     <script type="module" src="/src/main.ts"></script>
