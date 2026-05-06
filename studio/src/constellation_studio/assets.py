@@ -21,6 +21,8 @@ DEFAULT_ASSET_URL_PREFIX = "/assets/"
 DEFAULT_MAX_IMAGE_SIZE = 2048
 DEFAULT_THUMBNAIL_SIZE = 384
 DEFAULT_JPEG_QUALITY = 90
+DEFAULT_JPEG_OPTIMIZE = False
+DEFAULT_JPEG_PROGRESSIVE = False
 
 WarnCallback = Callable[[str], None]
 
@@ -34,6 +36,8 @@ class AssetOptions:
     max_image_size: int = DEFAULT_MAX_IMAGE_SIZE
     thumbnail_size: int = DEFAULT_THUMBNAIL_SIZE
     jpeg_quality: int = DEFAULT_JPEG_QUALITY
+    jpeg_optimize: bool = DEFAULT_JPEG_OPTIMIZE
+    jpeg_progressive: bool = DEFAULT_JPEG_PROGRESSIVE
     skip_errors: bool = False
     warn: WarnCallback | None = None
     sanitize_workers: int | None = None
@@ -242,10 +246,17 @@ def prepare_sanitized_image(
     canonical_bytes = encode_jpeg(
         canonical,
         quality=options.jpeg_quality,
+        optimize=options.jpeg_optimize,
+        progressive=options.jpeg_progressive,
     )
     image_id = hashlib.sha256(canonical_bytes).hexdigest()
     thumbnail = resize_copy(canonical, options.thumbnail_size)
-    thumbnail_bytes = encode_jpeg(thumbnail, quality=options.jpeg_quality)
+    thumbnail_bytes = encode_jpeg(
+        thumbnail,
+        quality=options.jpeg_quality,
+        optimize=options.jpeg_optimize,
+        progressive=options.jpeg_progressive,
+    )
 
     image_path = options.asset_root / "images" / f"{image_id}.jpg"
     thumbnail_path = options.asset_root / "thumbs" / f"{image_id}.jpg"
@@ -312,15 +323,21 @@ def resize_copy(image: Image.Image, max_size: int) -> Image.Image:
     return copied
 
 
-def encode_jpeg(image: Image.Image, *, quality: int) -> bytes:
-    """Encode a Pillow RGB image as deterministic-ish optimized JPEG bytes."""
+def encode_jpeg(
+    image: Image.Image,
+    *,
+    quality: int,
+    optimize: bool,
+    progressive: bool,
+) -> bytes:
+    """Encode a Pillow RGB image with import-tuned JPEG settings."""
     buffer = BytesIO()
     image.save(
         buffer,
         format="JPEG",
         quality=quality,
-        optimize=True,
-        progressive=True,
+        optimize=optimize,
+        progressive=progressive,
     )
     return buffer.getvalue()
 
