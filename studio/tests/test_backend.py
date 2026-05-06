@@ -43,6 +43,10 @@ def fetch_bytes(url: str) -> bytes:
         return response.read()
 
 
+def fetch_text(url: str) -> str:
+    return fetch_bytes(url).decode("utf-8")
+
+
 def test_folder_source_adapter_scans_images(tmp_path: Path) -> None:
     create_image(tmp_path / "photos" / "nested" / "one.jpg", (255, 0, 0))
 
@@ -97,6 +101,20 @@ def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
         status = fetch_json(f"{base_url}api/status")
         assert isinstance(status, dict)
         assert status["totalAssets"] == 0
+
+        sources = fetch_json(f"{base_url}api/sources")
+        assert isinstance(sources, dict)
+        source_types = {source["type"] for source in sources["sources"]}
+        assert {"folder", "studioDataset", "applePhotos"}.issubset(source_types)
+        folder_source = next(
+            source for source in sources["sources"] if source["type"] == "folder"
+        )
+        assert folder_source["enabled"] is True
+
+        index_html = fetch_text(base_url)
+        assert "Choose your photo source" in index_html
+        assert "Existing Studio dataset" in index_html
+        assert "iCloud / Apple Photos" in index_html
 
         imported = post_json(
             f"{base_url}api/import/folder",

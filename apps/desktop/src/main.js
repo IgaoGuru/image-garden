@@ -103,24 +103,27 @@ async function createWindow() {
   mainWindow.loadURL(process.env.CONSTELLATION_VIEWER_URL ?? url);
 }
 
-async function importFolderFromDialog() {
-  if (!backendUrl) return;
+async function importFolder(folderPath) {
+  if (!backendUrl) throw new Error('Backend is not ready.');
+  const response = await fetch(new URL('/api/import/folder', backendUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: folderPath }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(`Import failed: ${response.status} ${payload.error ?? response.statusText}`);
+  }
+  return payload;
+}
+
+async function chooseAndImportFolder() {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Import photo folder',
     properties: ['openDirectory'],
   });
-  if (result.canceled || result.filePaths.length === 0) return;
-
-  const response = await fetch(new URL('/api/import/folder', backendUrl), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: result.filePaths[0] }),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Import failed: ${response.status} ${text}`);
-  }
-  mainWindow?.reload();
+  if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true };
+  return importFolder(result.filePaths[0]);
 }
 
 function installMenu() {
@@ -140,9 +143,13 @@ function installMenu() {
           label: 'Import Folder…',
           accelerator: 'CmdOrCtrl+O',
           click: () => {
-            importFolderFromDialog().catch((error) => {
-              dialog.showErrorBox('Import failed', String(error));
-            });
+            chooseAndImportFolder()
+              .then((result) => {
+                if (result?.ok) mainWindow?.reload();
+              })
+              .catch((error) => {
+                dialog.showErrorBox('Import failed', String(error));
+              });
           },
         },
         { type: 'separator' },
@@ -155,14 +162,10 @@ function installMenu() {
 }
 
 ipcMain.handle('constellation:getBackendUrl', () => backendUrl);
+ipcMain.handle('constellation:openImportFolder', async () => chooseAndImportFolder());
 ipcMain.handle('constellation:importFolder', async (_event, folderPath) => {
-  if (typeof folderPath !== 'string' || !backendUrl) return null;
-  const response = await fetch(new URL('/api/import/folder', backendUrl), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: folderPath }),
-  });
-  return response.json();
+  if (typeof folderPath !== 'string') return null;
+  return importFolder(folderPath);
 });
 
 app.whenReady().then(() => {

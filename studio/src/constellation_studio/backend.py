@@ -33,33 +33,65 @@ BACKEND_INDEX_HTML = """<!doctype html>
   <title>Constellation Desktop Backend</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 0; background: #050507; color: #f4f0e8; }
-    header { padding: 16px 20px; border-bottom: 1px solid #2a2622; display: flex; gap: 16px; align-items: baseline; }
+    body { margin: 0; background: #050507; color: #f4f0e8; overflow: hidden; }
+    header { height: 57px; padding: 0 20px; border-bottom: 1px solid #2a2622; display: flex; gap: 16px; align-items: center; position: relative; z-index: 3; background: rgba(5, 5, 7, 0.92); backdrop-filter: blur(14px); }
     h1 { font-size: 18px; margin: 0; }
-    #status { color: #c0b7aa; font-size: 13px; }
-    #viewer { width: 100vw; height: calc(100vh - 58px); }
-    .fallback { padding: 20px; }
+    #status { color: #c0b7aa; font-size: 13px; flex: 1; }
+    button { border: 1px solid #4d4135; background: #1d1813; color: #f4f0e8; border-radius: 10px; padding: 9px 12px; font: inherit; cursor: pointer; }
+    button.primary { background: #f6c177; color: #21170d; border-color: #f6c177; font-weight: 700; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid #4d4135; background: #0c0a09; color: #f4f0e8; border-radius: 10px; padding: 10px 12px; font: inherit; }
+    code { color: #f6c177; }
+    #viewer { width: 100vw; height: calc(100vh - 58px); position: relative; }
+    #add-source { display: none; }
+    body.has-assets #add-source { display: inline-flex; }
+    #onboarding { position: fixed; inset: 58px 0 0; z-index: 2; display: none; align-items: center; justify-content: center; padding: 28px; background: radial-gradient(circle at 30% 20%, rgba(246, 193, 119, 0.12), transparent 36%), rgba(5, 5, 7, 0.72); backdrop-filter: blur(10px); overflow: auto; }
+    #onboarding.visible { display: flex; }
+    .panel { width: min(1080px, 100%); background: rgba(18, 16, 14, 0.94); border: 1px solid #342d26; border-radius: 24px; padding: 28px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45); }
+    .panel h2 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -0.04em; }
+    .panel > p { margin: 0 0 24px; color: #cfc5b8; max-width: 780px; line-height: 1.55; }
+    .source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .source-card { border: 1px solid #3a3129; border-radius: 18px; padding: 18px; background: #0c0a09; min-height: 230px; display: flex; flex-direction: column; gap: 12px; }
+    .source-card.enabled { border-color: #80613a; background: linear-gradient(180deg, rgba(246, 193, 119, 0.09), #0c0a09 46%); }
+    .source-card h3 { margin: 0; font-size: 20px; }
+    .source-card p { color: #c0b7aa; line-height: 1.45; margin: 0; }
+    .source-card .actions { margin-top: auto; display: grid; gap: 10px; }
+    .manual-folder { display: none; gap: 8px; }
+    .manual-folder.visible { display: grid; }
+    .badge { align-self: flex-start; color: #f6c177; background: rgba(246, 193, 119, 0.12); border: 1px solid rgba(246, 193, 119, 0.26); border-radius: 999px; padding: 4px 9px; font-size: 12px; }
+    .muted { color: #8f857a; font-size: 12px; }
+    .fallback { padding: 20px; overflow: auto; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
     .card { background: #12100e; border: 1px solid #302a24; border-radius: 12px; overflow: hidden; }
     .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #090807; }
     .card div { padding: 8px; font-size: 12px; color: #cfc5b8; overflow-wrap: anywhere; }
-    code { color: #f6c177; }
+    @media (max-width: 860px) { .source-grid { grid-template-columns: 1fr; } body { overflow: auto; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>Constellation Local Backend</h1>
-    <div id="status">Loading <code>/api/assets</code>…</div>
+    <h1>Constellation</h1>
+    <div id="status">Loading library…</div>
+    <button id="add-source" type="button">Add Source…</button>
   </header>
   <main id="viewer"></main>
+  <section id="onboarding" aria-live="polite"></section>
   <script type="module">
     const status = document.querySelector('#status');
     const root = document.querySelector('#viewer');
-    const payload = await fetch('/api/assets?limit=5000').then((response) => {
-      if (!response.ok) throw new Error(`assets HTTP ${response.status}`);
-      return response.json();
-    });
+    const onboarding = document.querySelector('#onboarding');
+    const addSourceButton = document.querySelector('#add-source');
+    const desktop = window.constellationDesktop;
+
+    const [payload, sourcesPayload] = await Promise.all([
+      fetch('/api/assets?limit=5000').then((response) => {
+        if (!response.ok) throw new Error(`assets HTTP ${response.status}`);
+        return response.json();
+      }),
+      fetch('/api/sources').then((response) => response.ok ? response.json() : { sources: [] }),
+    ]);
     const assets = payload.assets ?? [];
+    document.body.classList.toggle('has-assets', assets.length > 0);
     const data = {
       images: assets.map((asset) => ({
         ...asset,
@@ -87,16 +119,102 @@ BACKEND_INDEX_HTML = """<!doctype html>
     const viewer = await importViewer();
     if (viewer && typeof viewer.mount === 'function') {
       status.textContent = assets.length
-        ? `Mounted @constellation/viewer with ${assets.length} positioned assets.`
-        : 'Viewer ready. Use Library → Import Folder… in the desktop app, or POST /api/import/folder.';
-      viewer.mount(root, data, { backgroundColor: 0x050507 });
+        ? `Exploring ${assets.length} positioned assets.`
+        : 'Choose a source to start building your local library.';
+      viewer.mount(root, data, { backgroundColor: 0x050507, sprites: { renderMode: 'auto' } });
     } else {
-      status.textContent = assets.length
-        ? `Viewer package not found; showing ${assets.length} runtime assets from SQLite.`
-        : 'No assets indexed yet. Use POST /api/import/folder or the Electron Import Folder menu.';
+      status.textContent = 'Viewer bundle not found; local API is running.';
       root.className = 'fallback';
       root.innerHTML = '<p>Local API is running, but the @constellation/viewer bundle was not found. Run <code>pnpm --filter @constellation/viewer build</code> or start the desktop app with a valid viewer dist.</p><div class="grid"></div>';
+      renderFallbackGrid(assets);
+    }
+
+    if (assets.length === 0) showOnboarding();
+    addSourceButton.addEventListener('click', showOnboarding);
+
+    function showOnboarding() {
+      onboarding.innerHTML = onboardingMarkup(sourcesPayload.sources ?? []);
+      onboarding.classList.add('visible');
+      onboarding.querySelector('[data-action="close"]')?.addEventListener('click', () => onboarding.classList.remove('visible'));
+      onboarding.querySelector('[data-action="choose-folder"]')?.addEventListener('click', chooseFolder);
+      const manualForm = onboarding.querySelector('[data-manual-folder]');
+      onboarding.querySelector('[data-action="show-manual-folder"]')?.addEventListener('click', () => manualForm?.classList.toggle('visible'));
+      manualForm?.addEventListener('submit', submitManualFolder);
+    }
+
+    function onboardingMarkup(sources) {
+      const source = (type) => sources.find((item) => item.type === type) ?? {};
+      const folder = source('folder');
+      const studio = source('studioDataset');
+      const apple = source('applePhotos');
+      const canUseDesktopPicker = Boolean(desktop?.openImportFolder);
+      return `<div class="panel">
+        <button style="float:right" type="button" data-action="close">Close</button>
+        <span class="badge">Local-first setup</span>
+        <h2>Choose your photo source</h2>
+        <p>Constellation stores indexed runtime assets locally. Start with a regular image folder today; precomputed Studio datasets and iCloud Photos are shown here as upcoming source adapters.</p>
+        <div class="source-grid">
+          <article class="source-card enabled">
+            <span class="badge">Ready</span>
+            <h3>${folder.label ?? 'Image folder'}</h3>
+            <p>${folder.description ?? 'Recursively import JPEG, PNG, HEIC/HEIF where supported, and other image files from a directory.'}</p>
+            <div class="actions">
+              <button class="primary" type="button" data-action="choose-folder">${canUseDesktopPicker ? 'Choose Folder…' : 'Import Folder Path'}</button>
+              ${canUseDesktopPicker ? '<button type="button" data-action="show-manual-folder">Enter path manually</button>' : ''}
+              <form class="manual-folder ${canUseDesktopPicker ? '' : 'visible'}" data-manual-folder>
+                <input name="path" placeholder="/absolute/path/to/photos" autocomplete="off">
+                <button type="submit">Import path</button>
+              </form>
+            </div>
+          </article>
+          <article class="source-card">
+            <span class="badge">Coming soon</span>
+            <h3>${studio.label ?? 'Existing Studio dataset'}</h3>
+            <p>${studio.description ?? 'Use an already computed constellation.json / Studio manifest with image and embedding/layout assets.'}</p>
+            <div class="actions"><button type="button" disabled>Importer not wired yet</button><div class="muted">Needs POST /api/import/studio normalization.</div></div>
+          </article>
+          <article class="source-card">
+            <span class="badge">Coming soon</span>
+            <h3>${apple.label ?? 'iCloud / Apple Photos'}</h3>
+            <p>${apple.description ?? 'Import from macOS Photos/iCloud through a native PhotoKit adapter after permissions are implemented.'}</p>
+            <div class="actions"><button type="button" disabled>Requires PhotoKit bridge</button><div class="muted">Not available in this prototype.</div></div>
+          </article>
+        </div>
+      </div>`;
+    }
+
+    async function chooseFolder() {
+      if (desktop?.openImportFolder) {
+        const result = await desktop.openImportFolder();
+        if (result?.ok) window.location.reload();
+        return;
+      }
+      onboarding.querySelector('[data-manual-folder]')?.classList.add('visible');
+      onboarding.querySelector('[name="path"]')?.focus();
+    }
+
+    async function submitManualFolder(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const path = new FormData(form).get('path');
+      if (typeof path !== 'string' || !path.trim()) return;
+      status.textContent = `Importing ${path}…`;
+      const response = await fetch('/api/import/folder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        status.textContent = `Import failed: ${result.error ?? response.statusText}`;
+        return;
+      }
+      window.location.reload();
+    }
+
+    function renderFallbackGrid(assets) {
       const grid = root.querySelector('.grid');
+      if (!grid) return;
       for (const asset of assets) {
         const card = document.createElement('article');
         card.className = 'card';
@@ -202,6 +320,9 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/status":
             self._send_json(self.store.status(), send_body=send_body)
+            return
+        if route == "/api/sources":
+            self._send_json(source_capabilities(), send_body=send_body)
             return
         if route == "/api/assets":
             self._get_assets(query, send_body=send_body)
@@ -426,6 +547,35 @@ def query_float(
         return float(raw)
     except ValueError:
         return default
+
+
+def source_capabilities() -> dict[str, object]:
+    """Return source types surfaced by the prototype onboarding UI."""
+    return {
+        "sources": [
+            {
+                "type": "folder",
+                "label": "Image folder",
+                "enabled": True,
+                "importEndpoint": "/api/import/folder",
+                "description": "Import images recursively from a local directory.",
+            },
+            {
+                "type": "studioDataset",
+                "label": "Existing Studio dataset",
+                "enabled": False,
+                "reason": "POST /api/import/studio is not implemented yet.",
+                "description": "Use an already computed constellation.json / Studio manifest.",
+            },
+            {
+                "type": "applePhotos",
+                "label": "iCloud / Apple Photos",
+                "enabled": False,
+                "reason": "Requires a native PhotoKit source adapter and permissions flow.",
+                "description": "Import from macOS Photos/iCloud after native integration exists.",
+            },
+        ],
+    }
 
 
 def resolve_below(root: Path, route_tail: str) -> Path | None:
