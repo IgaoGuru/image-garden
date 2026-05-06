@@ -45,6 +45,24 @@ Each image can provide either:
 
 `thumbnailUrl` is preferred for scene textures. `url` is the fallback/full image URL.
 
-## Close-up sprite stability
+## Cluster readability
 
-By default, sprites are capped to `sprites.maxViewportHeight = 0.22`, meaning an image can occupy at most 22% of the viewport height. When you fly very close to a dense cluster, nearby images shrink just enough to keep that observed height stable, revealing neighboring images instead of filling the whole screen. When you back away, they return to normal world size. Set `maxViewportHeight: Infinity` to disable this behavior.
+Embedding-derived layouts run a small 3D collision relaxation pass by default. Nearby points are pushed apart while being weakly pulled back toward their original UMAP positions, reducing sprite pileups without encoding density as image size.
+
+Useful knobs:
+
+```ts
+mount(el, data, {
+  layout: {
+    collisionRelaxation: true,
+    collisionDistance: 10,
+    collisionIterations: 35,
+    collisionAnchorStrength: 0.025,
+  },
+  sprites: {
+    maxViewportHeight: 0.45,
+  },
+});
+```
+
+The viewport-height cap is now only an emergency close-up guard: by default, a sprite can occupy at most 45% of the viewport height. Set `maxViewportHeight: Infinity` to disable it.

@@ -78,7 +78,7 @@ export class SpriteManager {
       lazyLoadDistance: options.lazyLoadDistance ?? 180,
       maxConcurrentLoads: options.maxConcurrentLoads ?? 8,
       maxLoadedTextures: options.maxLoadedTextures ?? 1_000,
-      maxViewportHeight: options.maxViewportHeight ?? 0.22,
+      maxViewportHeight: options.maxViewportHeight ?? 0.45,
       billboard: options.billboard ?? true,
       placeholderColor: options.placeholderColor ?? 0x777799,
       selectedColor: options.selectedColor ?? 0xffcc66,

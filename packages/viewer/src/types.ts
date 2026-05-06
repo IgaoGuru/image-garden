@@ -35,6 +35,14 @@ export interface LayoutOptions {
   seed?: number;
   /** Center resulting coordinates around the origin. */
   center?: boolean;
+  /** Separate nearby UMAP points after layout to reduce sprite overlap while preserving cluster anchors. Defaults to true for embedding-derived layouts. */
+  collisionRelaxation?: boolean;
+  /** Target minimum world-space distance between relaxed points. Defaults to 10. */
+  collisionDistance?: number;
+  /** Number of relaxation iterations. Defaults to 35. */
+  collisionIterations?: number;
+  /** Pull toward original UMAP position each iteration. Higher preserves UMAP more, lower separates more. Defaults to 0.025. */
+  collisionAnchorStrength?: number;
 }
 
 export interface ControlsOptions {

@@ -1,4 +1,4 @@
-import { computeLayout, mount } from '../dist/constellation-viewer.js';
+import { computeLayout, mount, relaxCollisions } from '../dist/constellation-viewer.js';
 
 if (typeof mount !== 'function') {
   throw new Error('Expected mount export to be a function.');
@@ -13,6 +13,21 @@ const positioned = computeLayout({
 const positionedXs = positioned.map((image) => image.position[0]);
 if (positionedXs[0] !== -5 || positionedXs[1] !== 5) {
   throw new Error(`Precomputed positions should be centered without default scaling; got ${positionedXs.join(',')}`);
+}
+
+const relaxed = relaxCollisions(
+  [
+    [0, 0, 0],
+    [0, 0, 0],
+  ],
+  { collisionDistance: 10, collisionIterations: 20, collisionAnchorStrength: 0 },
+);
+const dx = relaxed[0][0] - relaxed[1][0];
+const dy = relaxed[0][1] - relaxed[1][1];
+const dz = relaxed[0][2] - relaxed[1][2];
+const relaxedDistance = Math.hypot(dx, dy, dz);
+if (relaxedDistance < 9.9) {
+  throw new Error(`Collision relaxation failed; distance=${relaxedDistance}`);
 }
 
 const embedded = computeLayout({

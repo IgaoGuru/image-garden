@@ -20,7 +20,7 @@ export type {
   SpriteOptions,
   Vec3,
 } from './types';
-export { computeLayout } from './layout';
+export { computeLayout, relaxCollisions } from './layout';
 
 class ConstellationViewerImpl implements ConstellationViewer {
   readonly container: HTMLElement;

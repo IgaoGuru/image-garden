@@ -21,7 +21,8 @@ export function computeLayout(
       return position;
     });
     const transformed = transformPoints(points, { center, scale, normalize: false });
-    return images.map((image, index) => ({ ...image, position: transformed[index] ?? [0, 0, 0] }));
+    const relaxed = options.collisionRelaxation ? relaxCollisions(transformed, options) : transformed;
+    return images.map((image, index) => ({ ...image, position: relaxed[index] ?? [0, 0, 0] }));
   }
 
   if (!images.every((image) => image.embedding !== undefined)) {
@@ -51,7 +52,8 @@ export function computeLayout(
   const scale = options.scale ?? DEFAULT_SCALE;
   const points = reduceEmbeddingsTo3D(embeddings, options);
   const transformed = transformPoints(points, { center, scale, normalize: true });
-  return images.map((image, index) => ({ ...image, position: transformed[index] ?? [0, 0, 0] }));
+  const relaxed = options.collisionRelaxation ?? true ? relaxCollisions(transformed, options) : transformed;
+  return images.map((image, index) => ({ ...image, position: relaxed[index] ?? [0, 0, 0] }));
 }
 
 function reduceEmbeddingsTo3D(embeddings: number[][], options: LayoutOptions): Vec3[] {
@@ -99,6 +101,132 @@ function transformPoints(
     const z = (options.center ? point[2] - center[2] : point[2]) * factor;
     return [x, y, z];
   });
+}
+
+export function relaxCollisions(points: readonly Vec3[], options: LayoutOptions = {}): Vec3[] {
+  const minDistance = options.collisionDistance ?? 10;
+  const iterations = options.collisionIterations ?? 35;
+  const anchorStrength = options.collisionAnchorStrength ?? 0.025;
+  if (points.length < 2 || minDistance <= 0 || iterations <= 0) {
+    return points.map((point) => [point[0], point[1], point[2]]);
+  }
+
+  const original = points.map((point) => [point[0], point[1], point[2]] as [number, number, number]);
+  const relaxed = points.map((point) => [point[0], point[1], point[2]] as [number, number, number]);
+  const minDistanceSq = minDistance * minDistance;
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const grid = buildSpatialGrid(relaxed, minDistance);
+    for (let index = 0; index < relaxed.length; index += 1) {
+      const point = relaxed[index];
+      if (!point) continue;
+      const cell = gridCell(point, minDistance);
+      forEachNeighborIndex(grid, cell, (otherIndex) => {
+        if (otherIndex <= index) return;
+        const other = relaxed[otherIndex];
+        if (!other) return;
+        separatePair(point, other, index, otherIndex, minDistance, minDistanceSq);
+      });
+    }
+
+    if (anchorStrength > 0) {
+      for (let index = 0; index < relaxed.length; index += 1) {
+        const point = relaxed[index];
+        const anchor = original[index];
+        if (!point || !anchor) continue;
+        point[0] += (anchor[0] - point[0]) * anchorStrength;
+        point[1] += (anchor[1] - point[1]) * anchorStrength;
+        point[2] += (anchor[2] - point[2]) * anchorStrength;
+      }
+    }
+  }
+
+  return relaxed.map((point) => [point[0], point[1], point[2]]);
+}
+
+function buildSpatialGrid(points: readonly [number, number, number][], cellSize: number): Map<string, number[]> {
+  const grid = new Map<string, number[]>();
+  for (const [index, point] of points.entries()) {
+    const key = gridKey(gridCell(point, cellSize));
+    const bucket = grid.get(key);
+    if (bucket) {
+      bucket.push(index);
+    } else {
+      grid.set(key, [index]);
+    }
+  }
+  return grid;
+}
+
+function gridCell(point: readonly [number, number, number], cellSize: number): [number, number, number] {
+  return [
+    Math.floor(point[0] / cellSize),
+    Math.floor(point[1] / cellSize),
+    Math.floor(point[2] / cellSize),
+  ];
+}
+
+function gridKey(cell: readonly [number, number, number]): string {
+  return `${cell[0]},${cell[1]},${cell[2]}`;
+}
+
+function forEachNeighborIndex(
+  grid: Map<string, number[]>,
+  cell: readonly [number, number, number],
+  callback: (index: number) => void,
+): void {
+  for (let dx = -1; dx <= 1; dx += 1) {
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dz = -1; dz <= 1; dz += 1) {
+        const bucket = grid.get(gridKey([cell[0] + dx, cell[1] + dy, cell[2] + dz]));
+        if (!bucket) continue;
+        for (const index of bucket) callback(index);
+      }
+    }
+  }
+}
+
+function separatePair(
+  point: [number, number, number],
+  other: [number, number, number],
+  index: number,
+  otherIndex: number,
+  minDistance: number,
+  minDistanceSq: number,
+): void {
+  let dx = point[0] - other[0];
+  let dy = point[1] - other[1];
+  let dz = point[2] - other[2];
+  let distanceSq = dx * dx + dy * dy + dz * dz;
+  if (distanceSq >= minDistanceSq) return;
+
+  if (distanceSq < 1e-9) {
+    const direction = deterministicUnitVector(index, otherIndex);
+    dx = direction[0];
+    dy = direction[1];
+    dz = direction[2];
+    distanceSq = 1;
+  }
+
+  const distance = Math.sqrt(distanceSq);
+  const push = ((minDistance - distance) * 0.5) / distance;
+  const pushX = dx * push;
+  const pushY = dy * push;
+  const pushZ = dz * push;
+  point[0] += pushX;
+  point[1] += pushY;
+  point[2] += pushZ;
+  other[0] -= pushX;
+  other[1] -= pushY;
+  other[2] -= pushZ;
+}
+
+function deterministicUnitVector(index: number, otherIndex: number): Vec3 {
+  const random = seededRandom((index + 1) * 65_537 + (otherIndex + 1) * 1_048_583);
+  const z = random() * 2 - 1;
+  const theta = random() * Math.PI * 2;
+  const radius = Math.sqrt(Math.max(0, 1 - z * z));
+  return [Math.cos(theta) * radius, Math.sin(theta) * radius, z];
 }
 
 function getBounds(points: readonly Vec3[]): { min: Vec3; max: Vec3 } {
