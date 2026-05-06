@@ -319,7 +319,7 @@ def sanitize_worker_count(options: AssetOptions, image_count: int) -> int:
 def resize_copy(image: Image.Image, max_size: int) -> Image.Image:
     """Return a resized RGB copy constrained to max_size on the long edge."""
     copied = image.copy()
-    copied.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    copied.thumbnail((max_size, max_size), Image.Resampling.BICUBIC)
     return copied
 
 
