@@ -145,7 +145,8 @@ def import_folder(  # noqa: PLR0913
         total=len(sanitized),
         message="Writing runtime catalog",
     )
-    for completed, record in enumerate(sanitized, start=1):
+    runtime_assets: list[StoredRuntimeAsset] = []
+    for record in sanitized:
         relative_id = record.source_path.relative_to(
             resolved_folder
         ).as_posix()
@@ -160,7 +161,7 @@ def import_folder(  # noqa: PLR0913
                 media_type="image",
                 metadata={"sourcePath": str(record.source_path)},
             )
-        store.upsert_asset(
+        runtime_assets.append(
             StoredRuntimeAsset(
                 id=record.id,
                 thumbnail_path=record.thumbnail_path,
@@ -177,12 +178,13 @@ def import_folder(  # noqa: PLR0913
                 media_type=source_asset.media_type,
             ),
         )
-        store.set_job_progress(
-            phase="indexing",
-            completed=completed,
-            total=len(sanitized),
-            message="Writing runtime catalog",
-        )
+    store.upsert_assets(runtime_assets)
+    store.set_job_progress(
+        phase="indexing",
+        completed=len(sanitized),
+        total=len(sanitized),
+        message="Writing runtime catalog",
+    )
     store.set_last_import_path(resolved_folder)
     store.set_job_progress(
         phase="ready",

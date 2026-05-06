@@ -4,12 +4,37 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 Vec3 = tuple[float, float, float]
+SqliteValue = str | int | float | None
+
+UPSERT_ASSET_SQL = """
+INSERT INTO assets (
+    id, thumbnail_path, file_path, width, height, x, y, z,
+    metadata_json, source_type, source_id, source_asset_id,
+    stable_key, creation_date, media_type, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(id) DO UPDATE SET
+    thumbnail_path = excluded.thumbnail_path,
+    file_path = excluded.file_path,
+    width = excluded.width,
+    height = excluded.height,
+    x = excluded.x,
+    y = excluded.y,
+    z = excluded.z,
+    metadata_json = excluded.metadata_json,
+    source_type = excluded.source_type,
+    source_id = excluded.source_id,
+    source_asset_id = excluded.source_asset_id,
+    stable_key = excluded.stable_key,
+    creation_date = excluded.creation_date,
+    media_type = excluded.media_type,
+    updated_at = CURRENT_TIMESTAMP
+"""
 
 
 class RuntimeAsset(TypedDict):
@@ -111,54 +136,14 @@ class IndexStore:
 
     def upsert_asset(self, asset: StoredRuntimeAsset) -> None:
         """Insert or update a runtime asset."""
-        metadata_json = json.dumps(
-            asset.metadata,
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+        self.upsert_assets([asset])
+
+    def upsert_assets(self, assets: Sequence[StoredRuntimeAsset]) -> None:
+        """Insert or update runtime assets in one SQLite transaction."""
+        if not assets:
+            return
         with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO assets (
-                    id, thumbnail_path, file_path, width, height, x, y, z,
-                    metadata_json, source_type, source_id, source_asset_id,
-                    stable_key, creation_date, media_type, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET
-                    thumbnail_path = excluded.thumbnail_path,
-                    file_path = excluded.file_path,
-                    width = excluded.width,
-                    height = excluded.height,
-                    x = excluded.x,
-                    y = excluded.y,
-                    z = excluded.z,
-                    metadata_json = excluded.metadata_json,
-                    source_type = excluded.source_type,
-                    source_id = excluded.source_id,
-                    source_asset_id = excluded.source_asset_id,
-                    stable_key = excluded.stable_key,
-                    creation_date = excluded.creation_date,
-                    media_type = excluded.media_type,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (
-                    asset.id,
-                    str(asset.thumbnail_path),
-                    str(asset.file_path),
-                    asset.width,
-                    asset.height,
-                    asset.position[0],
-                    asset.position[1],
-                    asset.position[2],
-                    metadata_json,
-                    asset.source_type,
-                    asset.source_id,
-                    asset.source_asset_id,
-                    asset.stable_key,
-                    asset.creation_date,
-                    asset.media_type,
-                ),
-            )
+            connection.executemany(UPSERT_ASSET_SQL, asset_rows(assets))
 
     def set_index_state(self, state: str) -> None:
         """Persist a simple index state string."""
@@ -372,6 +357,39 @@ class IndexStore:
             """,
             (key, value),
         )
+
+
+def asset_rows(
+    assets: Sequence[StoredRuntimeAsset],
+) -> list[tuple[SqliteValue, ...]]:
+    """Return SQLite parameter rows for runtime assets."""
+    rows: list[tuple[SqliteValue, ...]] = []
+    for asset in assets:
+        metadata_json = json.dumps(
+            asset.metadata,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        rows.append(
+            (
+                asset.id,
+                str(asset.thumbnail_path),
+                str(asset.file_path),
+                asset.width,
+                asset.height,
+                asset.position[0],
+                asset.position[1],
+                asset.position[2],
+                metadata_json,
+                asset.source_type,
+                asset.source_id,
+                asset.source_asset_id,
+                asset.stable_key,
+                asset.creation_date,
+                asset.media_type,
+            ),
+        )
+    return rows
 
 
 def runtime_asset_from_row(row: sqlite3.Row) -> RuntimeAsset:
