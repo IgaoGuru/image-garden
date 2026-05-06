@@ -33,42 +33,42 @@ BACKEND_INDEX_HTML = """<!doctype html>
   <title>Constellation Desktop Backend</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 0; background: #050507; color: #f4f0e8; overflow: hidden; }
-    header { height: 57px; padding: 0 20px; border-bottom: 1px solid #2a2622; display: flex; gap: 16px; align-items: center; position: relative; z-index: 3; background: rgba(5, 5, 7, 0.92); backdrop-filter: blur(14px); }
+    body { margin: 0; background: #000; color: #fff; overflow: hidden; }
+    header { height: 57px; padding: 0 20px; border-bottom: 1px solid #222; display: flex; gap: 16px; align-items: center; position: relative; z-index: 3; background: rgba(0, 0, 0, 0.92); backdrop-filter: blur(14px); }
     h1 { font-size: 18px; margin: 0; }
-    #status { color: #c0b7aa; font-size: 13px; flex: 1; }
-    button { border: 1px solid #4d4135; background: #1d1813; color: #f4f0e8; border-radius: 10px; padding: 9px 12px; font: inherit; cursor: pointer; }
-    button.primary { background: #f6c177; color: #21170d; border-color: #f6c177; font-weight: 700; }
+    #status { color: #bbb; font-size: 13px; flex: 1; }
+    button { border: 1px solid #555; background: #111; color: #fff; border-radius: 10px; padding: 9px 12px; font: inherit; cursor: pointer; }
+    button.primary { background: #fff; color: #000; border-color: #fff; font-weight: 700; }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
-    input { width: 100%; box-sizing: border-box; border: 1px solid #4d4135; background: #0c0a09; color: #f4f0e8; border-radius: 10px; padding: 10px 12px; font: inherit; }
-    code { color: #f6c177; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid #555; background: #000; color: #fff; border-radius: 10px; padding: 10px 12px; font: inherit; }
+    code { color: #fff; }
     #viewer { width: 100vw; height: calc(100vh - 58px); position: relative; }
     #add-source { display: none; }
     body.has-assets #add-source { display: inline-flex; }
-    #onboarding { position: fixed; inset: 58px 0 0; z-index: 2; display: none; align-items: center; justify-content: center; padding: 28px; background: radial-gradient(circle at 30% 20%, rgba(246, 193, 119, 0.12), transparent 36%), rgba(5, 5, 7, 0.72); backdrop-filter: blur(10px); overflow: auto; }
+    #onboarding { position: fixed; inset: 58px 0 0; z-index: 2; display: none; align-items: center; justify-content: center; padding: 28px; background: rgba(0, 0, 0, 0.74); backdrop-filter: blur(10px); overflow: auto; }
     #onboarding.visible { display: flex; }
-    .panel { width: min(1080px, 100%); background: rgba(18, 16, 14, 0.94); border: 1px solid #342d26; border-radius: 24px; padding: 28px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45); }
+    .panel { width: min(1080px, 100%); background: #050505; border: 1px solid #333; border-radius: 24px; padding: 28px; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7); }
     .panel h2 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -0.04em; }
-    .panel > p { margin: 0 0 24px; color: #cfc5b8; max-width: 780px; line-height: 1.55; }
+    .panel > p { margin: 0 0 24px; color: #bbb; max-width: 780px; line-height: 1.55; }
     .source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .source-choice { text-align: left; border-radius: 14px; padding: 13px 14px; min-height: 76px; display: grid; gap: 4px; background: #0c0a09; }
+    .source-choice { text-align: left; border-radius: 14px; padding: 13px 14px; min-height: 76px; display: grid; gap: 4px; background: #000; }
     .source-choice strong { font-size: 15px; }
-    .source-choice span { color: #9e9286; font-size: 12px; line-height: 1.3; }
-    .source-choice.selected { border-color: #f6c177; background: rgba(246, 193, 119, 0.12); }
-    .source-detail { display: none; border: 1px solid #3a3129; border-radius: 16px; padding: 16px; background: #0c0a09; }
+    .source-choice span { color: #999; font-size: 12px; line-height: 1.3; }
+    .source-choice.selected { border-color: #fff; background: #181818; }
+    .source-detail { display: none; border: 1px solid #333; border-radius: 16px; padding: 16px; background: #000; }
     .source-detail.visible { display: grid; gap: 12px; }
     .source-detail h3 { margin: 0; font-size: 18px; }
-    .source-detail p { color: #c0b7aa; line-height: 1.45; margin: 0; }
+    .source-detail p { color: #bbb; line-height: 1.45; margin: 0; }
     .source-detail .actions { display: flex; flex-wrap: wrap; gap: 10px; }
     .manual-folder { display: none; grid-template-columns: minmax(240px, 1fr) auto; gap: 8px; }
     .manual-folder.visible { display: grid; }
-    .badge { align-self: flex-start; color: #f6c177; background: rgba(246, 193, 119, 0.12); border: 1px solid rgba(246, 193, 119, 0.26); border-radius: 999px; padding: 4px 9px; font-size: 12px; }
-    .muted { color: #8f857a; font-size: 12px; }
+    .state-label { color: #aaa; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .muted { color: #888; font-size: 12px; }
     .fallback { padding: 20px; overflow: auto; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
-    .card { background: #12100e; border: 1px solid #302a24; border-radius: 12px; overflow: hidden; }
-    .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #090807; }
-    .card div { padding: 8px; font-size: 12px; color: #cfc5b8; overflow-wrap: anywhere; }
+    .card { background: #080808; border: 1px solid #333; border-radius: 12px; overflow: hidden; }
+    .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #000; }
+    .card div { padding: 8px; font-size: 12px; color: #bbb; overflow-wrap: anywhere; }
     @media (max-width: 860px) { .source-grid { grid-template-columns: 1fr; } body { overflow: auto; } }
   </style>
 </head>
@@ -166,7 +166,6 @@ BACKEND_INDEX_HTML = """<!doctype html>
       const canUseDesktopPicker = Boolean(desktop?.openImportFolder);
       return `<div class="panel">
         <button style="float:right" type="button" data-action="close">Close</button>
-        <span class="badge">Local-first setup</span>
         <h2>Choose your photo source</h2>
         <p>Pick a source first. Import controls and paths stay hidden until you choose one.</p>
         <div class="source-grid" role="list" aria-label="Photo source choices">
@@ -184,7 +183,7 @@ BACKEND_INDEX_HTML = """<!doctype html>
           </button>
         </div>
         <section class="source-detail" data-source-detail="folder">
-          <span class="badge">Ready</span>
+          <span class="state-label">Ready</span>
           <h3>${folder.label ?? 'Image folder'}</h3>
           <p>${folder.description ?? 'Recursively import JPEG, PNG, HEIC/HEIF where supported, and other image files from a directory.'}</p>
           <div class="actions">
@@ -197,13 +196,13 @@ BACKEND_INDEX_HTML = """<!doctype html>
           </form>
         </section>
         <section class="source-detail" data-source-detail="studioDataset">
-          <span class="badge">Coming soon</span>
+          <span class="state-label">Coming soon</span>
           <h3>${studio.label ?? 'Existing Studio dataset'}</h3>
           <p>${studio.description ?? 'Use an already computed constellation.json / Studio manifest with image and embedding/layout assets.'}</p>
           <div class="actions"><button type="button" disabled>Importer not wired yet</button><span class="muted">Needs POST /api/import/studio normalization.</span></div>
         </section>
         <section class="source-detail" data-source-detail="applePhotos">
-          <span class="badge">Coming soon</span>
+          <span class="state-label">Coming soon</span>
           <h3>${apple.label ?? 'iCloud / Apple Photos'}</h3>
           <p>${apple.description ?? 'Import from macOS Photos/iCloud through a native PhotoKit adapter after permissions are implemented.'}</p>
           <div class="actions"><button type="button" disabled>Requires PhotoKit bridge</button><span class="muted">Not available in this prototype.</span></div>
