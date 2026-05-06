@@ -30,10 +30,8 @@ viewer.destroy();
 ## Controls
 
 - Click the canvas to lock pointer.
-- WASD / arrows: move.
+- WASD / arrows: fly relative to current look direction.
 - Shift: sprint.
-- Space or E: up.
-- Q or C: down.
 - Esc: unlock pointer.
 
 ## Data contract

@@ -1,4 +1,4 @@
-import type { PerspectiveCamera } from 'three';
+import { Vector3, type PerspectiveCamera } from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 
 import type { ControlsOptions } from './types';
@@ -8,8 +8,6 @@ interface KeyState {
   backward: boolean;
   left: boolean;
   right: boolean;
-  up: boolean;
-  down: boolean;
   sprint: boolean;
 }
 
@@ -30,16 +28,16 @@ export function createFlyControls(
   const clickToLock = options.clickToLock ?? true;
   const moveSpeed = options.moveSpeed ?? 45;
   const sprintMultiplier = options.sprintMultiplier ?? 3;
-  const verticalSpeed = options.verticalSpeed ?? moveSpeed;
   const pointer = new PointerLockControls(camera, domElement);
+  const forwardDirection = new Vector3();
+  const rightDirection = new Vector3();
+  const movement = new Vector3();
 
   const keys: KeyState = {
     forward: false,
     backward: false,
     left: false,
     right: false,
-    up: false,
-    down: false,
     sprint: false,
   };
 
@@ -60,14 +58,6 @@ export function createFlyControls(
       case 'KeyD':
       case 'ArrowRight':
         keys.right = pressed;
-        break;
-      case 'Space':
-      case 'KeyE':
-        keys.up = pressed;
-        break;
-      case 'KeyC':
-      case 'KeyQ':
-        keys.down = pressed;
         break;
       case 'ShiftLeft':
       case 'ShiftRight':
@@ -96,12 +86,18 @@ export function createFlyControls(
     update(deltaSeconds: number): void {
       if (!enabled) return;
       const speed = moveSpeed * (keys.sprint ? sprintMultiplier : 1) * deltaSeconds;
-      if (keys.forward) pointer.moveForward(speed);
-      if (keys.backward) pointer.moveForward(-speed);
-      if (keys.right) pointer.moveRight(speed);
-      if (keys.left) pointer.moveRight(-speed);
-      if (keys.up) camera.position.y += verticalSpeed * deltaSeconds;
-      if (keys.down) camera.position.y -= verticalSpeed * deltaSeconds;
+      camera.updateMatrixWorld(true);
+      camera.getWorldDirection(forwardDirection).normalize();
+      rightDirection.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+
+      movement.set(0, 0, 0);
+      if (keys.forward) movement.add(forwardDirection);
+      if (keys.backward) movement.sub(forwardDirection);
+      if (keys.right) movement.add(rightDirection);
+      if (keys.left) movement.sub(rightDirection);
+      if (movement.lengthSq() > 0) {
+        camera.position.addScaledVector(movement.normalize(), speed);
+      }
     },
     lock(): void {
       if (enabled) pointer.lock();
