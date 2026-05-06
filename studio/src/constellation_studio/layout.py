@@ -47,6 +47,8 @@ def umap_project(embeddings: Sequence[Embedding]) -> list[Vec3]:
             )
             for index in range(3)
         ]
+    if count <= 256:
+        return pca_project(embeddings)
 
     import numpy as np
     from umap import UMAP  # pyright: ignore[reportMissingTypeStubs]
@@ -76,6 +78,29 @@ def umap_project(embeddings: Sequence[Embedding]) -> list[Vec3]:
     projected = cast(
         "Sequence[Sequence[float]]", reducer.fit_transform(matrix)
     )
+    return [(float(row[0]), float(row[1]), float(row[2])) for row in projected]
+
+
+def pca_project(embeddings: Sequence[Embedding]) -> list[Vec3]:
+    """Project small embedding sets with PCA to avoid UMAP JIT overhead."""
+    import numpy as np
+
+    count = len(embeddings)
+    max_dim = max((len(embedding) for embedding in embeddings), default=0)
+    if max_dim == 0:
+        msg = "cannot layout empty embedding vectors"
+        raise ValueError(msg)
+    matrix = np.zeros((count, max_dim), dtype=np.float32)
+    for row_index, embedding in enumerate(embeddings):
+        matrix[row_index, : len(embedding)] = np.asarray(
+            embedding,
+            dtype=np.float32,
+        )
+    centered = matrix - matrix.mean(axis=0, keepdims=True)
+    _, _, components = np.linalg.svd(centered, full_matrices=False)
+    projected = centered @ components[: min(3, components.shape[0])].T
+    if projected.shape[1] < 3:
+        projected = np.pad(projected, ((0, 0), (0, 3 - projected.shape[1])))
     return [(float(row[0]), float(row[1]), float(row[2])) for row in projected]
 
 
