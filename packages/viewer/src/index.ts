@@ -1,3 +1,5 @@
+import { Vector3 } from 'three';
+
 import { createFlyControls, type FlyControls } from './controls';
 import { runtimeAssetsToData } from './data-source';
 import { computeLayout } from './layout';
@@ -54,6 +56,7 @@ class ConstellationViewerImpl implements ConstellationViewer {
   private readonly controls: FlyControls;
   private sprites: RenderManager;
   private usingLod: boolean;
+  private readonly initialCameraPosition: PositionedImage['position'];
   private animationFrame: number | null = null;
   private destroyed = false;
 
@@ -71,6 +74,11 @@ class ConstellationViewerImpl implements ConstellationViewer {
     this.data = data;
     this.positions = computeLayout(data, options.layout);
     this.sceneHost = createSceneHost(container, options);
+    this.initialCameraPosition = [
+      this.sceneHost.camera.position.x,
+      this.sceneHost.camera.position.y,
+      this.sceneHost.camera.position.z,
+    ];
     this.sceneHost.scene.userData.camera = this.sceneHost.camera;
     this.controls = createFlyControls(this.sceneHost.camera, this.sceneHost.renderer.domElement, options.controls);
     this.usingLod = shouldUseLod(this.positions.length, options);
@@ -84,6 +92,24 @@ class ConstellationViewerImpl implements ConstellationViewer {
   focus(): void {
     this.sceneHost.renderer.domElement.focus();
     this.controls.lock();
+  }
+
+  fitToContent(): void {
+    this.controls.unlock();
+    const radius = contentRadius(this.positions);
+    const distance = Math.max(180, radius * 2.2);
+    this.sceneHost.camera.position.set(0, 0, distance);
+    this.sceneHost.camera.lookAt(0, 0, 0);
+  }
+
+  resetCamera(): void {
+    this.controls.unlock();
+    this.sceneHost.camera.position.set(
+      this.initialCameraPosition[0],
+      this.initialCameraPosition[1],
+      this.initialCameraPosition[2],
+    );
+    this.sceneHost.camera.lookAt(0, 0, 0);
   }
 
   setData(data: ConstellationData): void {
@@ -168,6 +194,15 @@ export async function createViewerFromDataSource(
   options: ConstellationViewerOptions = {},
 ): Promise<ConstellationViewer> {
   return mountFromDataSource(container, dataSource, options);
+}
+
+function contentRadius(images: PositionedImage[]): number {
+  if (images.length === 0) return 120;
+  let radius = 0;
+  for (const image of images) {
+    radius = Math.max(radius, new Vector3(...image.position).length());
+  }
+  return radius;
 }
 
 function shouldUseLod(count: number, options: ConstellationViewerOptions): boolean {

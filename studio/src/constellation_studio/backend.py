@@ -7,6 +7,7 @@ import contextlib
 import json
 import mimetypes
 import platform
+import shutil
 import subprocess
 import sys
 import threading
@@ -45,72 +46,136 @@ BACKEND_INDEX_HTML = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Constellation</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif; }
+    :root {
+      color-scheme: dark;
+      font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top left, #1a141f 0, #08080b 38%, #020203 100%); color: #faf7f0; overflow: hidden; }
-    header { height: 60px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,0.09); display: flex; gap: 16px; align-items: center; position: relative; z-index: 3; background: rgba(3, 3, 5, 0.82); backdrop-filter: blur(18px); }
-    h1 { font-size: 18px; margin: 0; letter-spacing: -0.02em; }
-    #status { color: #b7b0a6; font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    button { border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #fffaf0; border-radius: 999px; padding: 10px 14px; font: inherit; cursor: pointer; transition: transform .15s ease, border-color .15s ease, background .15s ease; }
-    button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(255,255,255,0.42); background: rgba(255,255,255,0.11); }
-    button.primary { background: #f8efe0; color: #08080b; border-color: #f8efe0; font-weight: 750; }
-    button:disabled { opacity: 0.45; cursor: not-allowed; }
-    input { width: 100%; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.35); color: #fff; border-radius: 14px; padding: 12px 14px; font: inherit; }
-    code { color: #ffd8a8; }
-    #viewer { width: 100vw; height: calc(100vh - 60px); position: relative; }
-    #add-source { display: none; }
-    body.has-assets #add-source { display: inline-flex; }
-    #onboarding { position: fixed; inset: 60px 0 0; z-index: 2; display: none; align-items: center; justify-content: center; padding: 32px; background: radial-gradient(circle at 50% 0%, rgba(90, 60, 130, .32), rgba(0, 0, 0, .82) 42%); backdrop-filter: blur(12px); overflow: auto; }
+    html, body { margin: 0; width: 100%; min-height: 100%; background: #000; color: #f6f1e8; overflow: hidden; }
+    body { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    button, input { font: inherit; }
+    button { color: #f6f1e8; background: transparent; border: 1px solid rgba(246,241,232,.25); border-radius: 0; padding: 10px 14px; cursor: pointer; transition: border-color .16s ease, background .16s ease, opacity .16s ease; }
+    button:hover:not(:disabled), button:focus-visible { border-color: rgba(246,241,232,.72); background: rgba(246,241,232,.055); outline: none; }
+    button:disabled { cursor: not-allowed; opacity: .42; }
+    input { width: 100%; color: #f6f1e8; background: #050505; border: 1px solid rgba(246,241,232,.24); padding: 11px 12px; outline: none; }
+    input:focus { border-color: rgba(246,241,232,.72); }
+    #viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; opacity: 0; transition: opacity 1400ms ease; }
+    #viewer.visible { opacity: 1; }
+    #status { position: fixed; left: 18px; bottom: 16px; z-index: 5; max-width: calc(100vw - 36px); color: rgba(246,241,232,.54); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+    #help-text { position: fixed; left: 50%; bottom: 18px; z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.52); font-size: 11px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
+    #help-text.visible { opacity: 1; }
+    #onboarding { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; padding: 28px; background: #000; opacity: 0; transition: opacity 1200ms ease; }
     #onboarding.visible { display: flex; }
-    .panel { width: min(1120px, 100%); background: linear-gradient(180deg, rgba(18,18,24,.96), rgba(7,7,10,.98)); border: 1px solid rgba(255,255,255,0.12); border-radius: 30px; padding: clamp(22px, 4vw, 40px); box-shadow: 0 30px 100px rgba(0,0,0,.72); }
-    .panel-top { display: flex; align-items: flex-start; gap: 18px; justify-content: space-between; margin-bottom: 24px; }
-    .eyebrow { color: #ffd8a8; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 10px; }
-    .panel h2 { margin: 0 0 10px; font-size: clamp(34px, 5vw, 64px); line-height: .95; letter-spacing: -0.06em; max-width: 780px; }
-    .panel p { margin: 0; color: #c9c0b6; line-height: 1.55; }
-    .intro { max-width: 760px; font-size: 16px; }
-    .source-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 28px; }
-    .source-card { text-align: left; border-radius: 24px; padding: 22px; min-height: 260px; display: grid; align-content: space-between; gap: 18px; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.12); }
-    .source-card:hover { background: rgba(255,255,255,0.075); }
-    .source-card h3 { margin: 0 0 8px; font-size: 26px; letter-spacing: -0.03em; }
-    .source-card p { color: #bdb4aa; }
-    .badge { display: inline-flex; align-items: center; width: fit-content; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: .02em; background: rgba(81, 207, 102, .16); color: #b2f2bb; border: 1px solid rgba(81, 207, 102, .26); }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    .manual-form { display: none; grid-template-columns: minmax(240px, 1fr) auto; gap: 10px; margin-top: 12px; }
+    #onboarding.fade-in { opacity: 1; }
+    .onboarding-panel { width: min(520px, 100%); display: grid; gap: 24px; justify-items: center; animation: hello 1200ms ease both; }
+    @keyframes hello { from { transform: translateY(8px); filter: blur(4px); } to { transform: translateY(0); filter: blur(0); } }
+    .title { margin: 0; color: rgba(246,241,232,.88); font-size: clamp(15px, 2.4vw, 19px); font-weight: 400; letter-spacing: .01em; text-align: center; }
+    .drop-zone { width: min(420px, 72vw); aspect-ratio: 1; display: grid; place-items: center; padding: 24px; color: rgba(246,241,232,.68); border: 1px solid rgba(246,241,232,.24); background: radial-gradient(circle at 50% 50%, rgba(246,241,232,.045), rgba(246,241,232,.015) 44%, transparent 70%); text-align: center; }
+    .drop-zone:hover, .drop-zone.dragging { border-color: rgba(246,241,232,.82); background: rgba(246,241,232,.04); }
+    .dataset-button { border: 0; color: rgba(246,241,232,.52); padding: 4px; font-size: 12px; }
+    .dataset-button:hover, .dataset-button:focus-visible { color: rgba(246,241,232,.9); background: transparent; }
+    .manual-form { display: none; width: min(420px, 72vw); grid-template-columns: 1fr auto; gap: 8px; }
     .manual-form.visible { display: grid; }
-    .hint { color: #8f877d; font-size: 12px; margin-top: 10px; }
+    .manual-form[data-manual-form="studio"] { margin-top: -12px; }
+    #progress { position: fixed; inset: 0; z-index: 12; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.94); opacity: 0; transition: opacity 240ms ease; }
+    #progress.visible { display: flex; opacity: 1; }
+    .progress-panel { width: min(520px, calc(100vw - 48px)); display: grid; gap: 18px; }
+    .progress-line { display: flex; justify-content: space-between; gap: 16px; color: rgba(246,241,232,.72); font-size: 12px; }
+    .bar { height: 1px; background: rgba(246,241,232,.18); overflow: hidden; }
+    .bar-fill { width: 0%; height: 100%; background: rgba(246,241,232,.86); transition: width 260ms ease; }
+    .starfield { position: relative; height: 170px; border: 1px solid rgba(246,241,232,.12); background: radial-gradient(circle at 50% 50%, rgba(246,241,232,.035), transparent 72%); overflow: hidden; }
+    .star { position: absolute; width: 2px; height: 2px; border-radius: 999px; background: rgba(246,241,232,.84); opacity: .2; transform: scale(.4); animation: starBirth 720ms ease forwards; }
+    @keyframes starBirth { to { opacity: .9; transform: scale(1); } }
+    .progress-log { display: grid; gap: 3px; min-height: 66px; overflow: hidden; color: rgba(246,241,232,.36); font-size: 11px; }
+    .progress-log-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .3s ease; }
+    .progress-log-line:nth-child(1) { color: rgba(246,241,232,.78); opacity: 1; }
+    .progress-log-line:nth-child(2) { opacity: .62; }
+    .progress-log-line:nth-child(3) { opacity: .38; }
+    .progress-log-line:nth-child(4) { opacity: .18; }
+    #menu { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.74); opacity: 0; transition: opacity 140ms ease; }
+    #menu.visible { display: flex; opacity: 1; }
+    .menu-panel { width: min(360px, calc(100vw - 42px)); display: grid; gap: 8px; padding: 18px; border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); }
+    .menu-panel button { width: 100%; text-align: left; border-color: transparent; color: rgba(246,241,232,.72); }
+    .menu-panel button:hover, .menu-panel button:focus-visible { color: #f6f1e8; border-color: rgba(246,241,232,.26); }
+    .debug { display: none; max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid rgba(246,241,232,.12); color: rgba(246,241,232,.62); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .debug.visible { display: block; }
     .fallback { padding: 20px; overflow: auto; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
-    .card { background: #080808; border: 1px solid #333; border-radius: 12px; overflow: hidden; }
+    .card { background: #080808; border: 1px solid #333; overflow: hidden; }
     .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #000; }
     .card div { padding: 8px; font-size: 12px; color: #bbb; overflow-wrap: anywhere; }
-    @media (max-width: 820px) { body { overflow: auto; } .source-grid { grid-template-columns: 1fr; } .manual-form { grid-template-columns: 1fr; } .panel-top { display: block; } .panel-top button { margin-top: 16px; } }
+    @media (max-width: 620px) { .manual-form { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Constellation</h1>
-    <div id="status">Loading library…</div>
-    <button id="add-source" type="button">Add Photos…</button>
-  </header>
   <main id="viewer"></main>
+  <div id="status" aria-live="polite">loading</div>
+  <div id="help-text">wasd move · spacebar up · c down · esc go back</div>
   <section id="onboarding" aria-live="polite"></section>
+  <section id="progress" aria-live="polite">
+    <div class="progress-panel">
+      <div class="progress-line"><span id="progress-phase">embedding images</span><span id="progress-count">0 / 0</span></div>
+      <div class="bar"><div id="progress-fill" class="bar-fill"></div></div>
+      <div id="starfield" class="starfield" aria-hidden="true"></div>
+      <div id="progress-log" class="progress-log" aria-live="polite"></div>
+    </div>
+  </section>
+  <section id="menu" aria-hidden="true">
+    <div class="menu-panel" role="dialog" aria-label="menu">
+      <button type="button" data-menu="reset-camera">reset camera</button>
+      <button type="button" data-menu="fit-constellation">fit constellation</button>
+      <button type="button" data-menu="reimport">reimport last folder</button>
+      <button type="button" data-menu="open-data">open data folder</button>
+      <button type="button" data-menu="clear-data">clear data</button>
+      <button type="button" data-menu="debug">debug status</button>
+      <button type="button" data-menu="close">close</button>
+      <pre id="debug" class="debug"></pre>
+    </div>
+  </section>
   <script type="module">
     const status = document.querySelector('#status');
+    const helpText = document.querySelector('#help-text');
     const root = document.querySelector('#viewer');
     const onboarding = document.querySelector('#onboarding');
-    const addSourceButton = document.querySelector('#add-source');
+    const progress = document.querySelector('#progress');
+    const progressPhase = document.querySelector('#progress-phase');
+    const progressCount = document.querySelector('#progress-count');
+    const progressFill = document.querySelector('#progress-fill');
+    const starfield = document.querySelector('#starfield');
+    const progressLog = document.querySelector('#progress-log');
+    const menu = document.querySelector('#menu');
+    const debug = document.querySelector('#debug');
     const desktop = window.constellationDesktop;
+    let viewerInstance = null;
+    let latestStatus = null;
+    let starCount = 0;
+    let targetStarCount = 0;
+    let lastProgressLogKey = '';
+    let visibleProgress = 0;
+    let helpTimer = 0;
+    let idleTimer = 0;
+    let spinnerFrame = 0;
+    let wasPointerLocked = false;
+    let helpPinnedUntilMovement = false;
+    const spinnerFrames = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠'];
+    const progressLogEntries = [];
+    window.setInterval(() => {
+      if (!progress.classList.contains('visible') || progressLogEntries.length === 0) return;
+      spinnerFrame = (spinnerFrame + 1) % spinnerFrames.length;
+      renderProgressLog();
+    }, 140);
 
-    const [payload, sourcesPayload] = await Promise.all([
+    const [payload, sourcesPayload, initialStatus] = await Promise.all([
       fetch('/api/assets?limit=5000').then((response) => {
         if (!response.ok) throw new Error(`assets HTTP ${response.status}`);
         return response.json();
       }),
       fetch('/api/sources').then((response) => response.ok ? response.json() : { sources: [] }),
+      fetch('/api/status').then((response) => response.ok ? response.json() : null),
     ]);
     const assets = payload.assets ?? [];
     const sources = sourcesPayload.sources ?? [];
-    document.body.classList.toggle('has-assets', assets.length > 0);
+    latestStatus = initialStatus;
     const data = { images: assets.map((asset) => ({ ...asset, url: asset.fullUrl ?? asset.thumbnailUrl })) };
 
     async function importViewer() {
@@ -132,103 +197,104 @@ BACKEND_INDEX_HTML = """<!doctype html>
 
     const viewer = await importViewer();
     if (viewer && typeof viewer.mount === 'function') {
-      status.textContent = assets.length
-        ? `Exploring ${assets.length} local photo${assets.length === 1 ? '' : 's'}.`
-        : 'Bring your own photos to start a local constellation.';
-      viewer.mount(root, data, { backgroundColor: 0x050507, sprites: { renderMode: 'auto' } });
+      status.textContent = assets.length ? `${assets.length} images` : '';
+      viewerInstance = viewer.mount(root, data, { backgroundColor: 0x000000, sprites: { renderMode: 'auto' } });
+      requestAnimationFrame(() => root.classList.add('visible'));
     } else {
-      status.textContent = 'Viewer bundle not found; local API is running.';
+      status.textContent = 'viewer bundle missing';
       root.className = 'fallback';
-      root.innerHTML = '<p>Local API is running, but the @constellation/viewer bundle was not found. Run <code>pnpm --filter @constellation/viewer build</code> or start the desktop app with a valid viewer dist.</p><div class="grid"></div>';
+      root.innerHTML = '<p>viewer bundle missing</p><div class="grid"></div>';
       renderFallbackGrid(assets);
     }
 
     if (assets.length === 0) showOnboarding();
-    addSourceButton.addEventListener('click', showOnboarding);
+    else showSpawnHelp();
+    scheduleIdleHelp();
+    ['pointermove', 'pointerdown', 'wheel', 'keydown'].forEach((type) => {
+      window.addEventListener(type, noteActivity, { passive: true });
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (isMovementKey(event)) noteMovement();
+      if (event.key !== 'Escape') return;
+      if (onboarding.classList.contains('visible') || progress.classList.contains('visible')) return;
+      event.preventDefault();
+      toggleMenu();
+      showHelp(6000);
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      const canvas = root.querySelector('canvas');
+      const isPointerLocked = document.pointerLockElement === canvas;
+      if (wasPointerLocked && !isPointerLocked && isPlayviewVisible() && !menu.classList.contains('visible')) {
+        showMenu();
+        showHelp(6000);
+      }
+      wasPointerLocked = isPointerLocked;
+    });
+
+    menu.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-menu]');
+      if (!button) return;
+      const action = button.dataset.menu;
+      if (action === 'close') hideMenu();
+      if (action === 'reset-camera') { viewerInstance?.resetCamera?.(); hideMenu(); }
+      if (action === 'fit-constellation') { viewerInstance?.fitToContent?.(); hideMenu(); }
+      if (action === 'reimport') await reimportLastFolder();
+      if (action === 'open-data') await postJson('/api/system/open-data-dir', {});
+      if (action === 'clear-data') await clearData();
+      if (action === 'debug') await showDebug();
+    });
 
     function showOnboarding() {
       onboarding.innerHTML = onboardingMarkup();
       onboarding.classList.add('visible');
-      onboarding.querySelector('[data-action="close"]')?.addEventListener('click', () => onboarding.classList.remove('visible'));
-      onboarding.querySelector('[data-action="choose-folder"]')?.addEventListener('click', chooseFolder);
+      requestAnimationFrame(() => onboarding.classList.add('fade-in'));
+      const dropZone = onboarding.querySelector('.drop-zone');
+      dropZone?.addEventListener('click', chooseFolder);
+      dropZone?.addEventListener('dragenter', (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
+      dropZone?.addEventListener('dragover', (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
+      dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
+      dropZone?.addEventListener('drop', handleDrop);
       onboarding.querySelector('[data-action="choose-studio"]')?.addEventListener('click', chooseStudioDataset);
-      onboarding.querySelectorAll('[data-action="show-manual"]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const form = onboarding.querySelector(`[data-manual-form="${button.dataset.target}"]`);
-          form?.classList.toggle('visible');
-          form?.querySelector('input')?.focus();
-        });
-      });
       onboarding.querySelector('[data-manual-form="folder"]')?.addEventListener('submit', submitManualFolder);
       onboarding.querySelector('[data-manual-form="studio"]')?.addEventListener('submit', submitManualStudio);
     }
 
-    function source(type) {
-      return sources.find((item) => item.type === type) ?? {};
+    function onboardingMarkup() {
+      return `<div class="onboarding-panel">
+        <h1 class="title">build your constellation of images</h1>
+        <button class="drop-zone" type="button" data-action="choose-folder">drop your photos directory here</button>
+        <form class="manual-form" data-manual-form="folder">
+          <input name="path" placeholder="/absolute/path/to/photos" autocomplete="off">
+          <button type="submit">import</button>
+        </form>
+        <button class="dataset-button" type="button" data-action="choose-studio">already have a image-embedding dataset?</button>
+        <form class="manual-form" data-manual-form="studio">
+          <input name="path" placeholder="/path/to/constellation.json" autocomplete="off">
+          <button type="submit">open</button>
+        </form>
+      </div>`;
     }
 
-    function onboardingMarkup() {
-      const folder = source('folder');
-      const studio = source('studioDataset');
-      const canPickFolder = true;
-      const canPickStudio = true;
-      const close = assets.length > 0 ? '<button type="button" data-action="close">Close</button>' : '';
-      return `<div class="panel">
-        <div class="panel-top">
-          <div>
-            <div class="eyebrow">Bring your own photos</div>
-            <h2>Build a constellation from files you control.</h2>
-            <p class="intro">Start with a local directory of images, a photo export, or a portable Constellation Studio dataset. Everything is file-based and local-first.</p>
-          </div>
-          ${close}
-        </div>
-        <div class="source-grid">
-          <article class="source-card">
-            <div>
-              <span class="badge">Ready now</span>
-              <h3>${folder.label ?? 'Photo directory'}</h3>
-              <p>${folder.description ?? 'Recursively import supported image files from a folder on this machine.'}</p>
-            </div>
-            <div>
-              <div class="actions">
-                <button class="primary" type="button" data-action="choose-folder">${canPickFolder ? 'Choose directory…' : 'Enter directory path'}</button>
-                ${canPickFolder ? '<button type="button" data-action="show-manual" data-target="folder">Paste path</button>' : ''}
-              </div>
-              <form class="manual-form" data-manual-form="folder">
-                <input name="path" placeholder="/absolute/path/to/photos" autocomplete="off">
-                <button type="submit">Import</button>
-              </form>
-              <div class="hint">Good for camera dumps, Finder folders, and photo exports.</div>
-            </div>
-          </article>
-          <article class="source-card">
-            <div>
-              <span class="badge">Ready now</span>
-              <h3>${studio.label ?? 'Constellation Studio dataset'}</h3>
-              <p>${studio.description ?? 'Open a constellation.json or constellation.studio.json produced by Studio.'}</p>
-            </div>
-            <div>
-              <div class="actions">
-                <button class="primary" type="button" data-action="choose-studio">${canPickStudio ? 'Open dataset…' : 'Enter dataset path'}</button>
-                ${canPickStudio ? '<button type="button" data-action="show-manual" data-target="studio">Paste path</button>' : ''}
-              </div>
-              <form class="manual-form" data-manual-form="studio">
-                <input name="path" placeholder="/path/to/constellation.json or constellation.studio.json" autocomplete="off">
-                <button type="submit">Import</button>
-              </form>
-              <div class="hint">Best for precomputed/portable Studio sets. Existing assets are referenced in place.</div>
-            </div>
-          </article>
-        </div>
-      </div>`;
+    async function handleDrop(event) {
+      event.preventDefault();
+      event.currentTarget.classList.remove('dragging');
+      const path = [...(event.dataTransfer?.files ?? [])].map((file) => file.path).find(Boolean);
+      if (path) {
+        await startFolderImport(path);
+        return;
+      }
+      status.textContent = 'directory path unavailable; opening picker';
+      await chooseFolder();
     }
 
     async function chooseFolder() {
       if (desktop?.openImportFolder) {
-        await runDesktopImport(() => desktop.openImportFolder(), 'Importing directory…');
+        await runDesktopImport(() => desktop.openImportFolder(), 'importing directory');
         return;
       }
-      const path = await chooseBackendPath('/api/dialog/folder', 'Choose a directory, then return to this browser window.');
+      const path = await chooseBackendPath('/api/dialog/folder', 'choose a directory');
       if (path) {
         await startFolderImport(path);
         return;
@@ -239,12 +305,12 @@ BACKEND_INDEX_HTML = """<!doctype html>
 
     async function chooseStudioDataset() {
       if (desktop?.openImportStudio) {
-        await runDesktopImport(() => desktop.openImportStudio(), 'Importing Studio dataset…');
+        await runDesktopImport(() => desktop.openImportStudio(), 'importing dataset');
         return;
       }
-      const path = await chooseBackendPath('/api/dialog/studio', 'Choose a Studio dataset, then return to this browser window.');
+      const path = await chooseBackendPath('/api/dialog/studio', 'choose a dataset');
       if (path) {
-        await submitImportPath('/api/import/studio', path, 'Importing Studio dataset');
+        await submitImportPath('/api/import/studio', path, 'opening dataset');
         return;
       }
       onboarding.querySelector('[data-manual-form="studio"]')?.classList.add('visible');
@@ -254,29 +320,26 @@ BACKEND_INDEX_HTML = """<!doctype html>
     async function chooseBackendPath(endpoint, message) {
       status.textContent = message;
       try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: '{}',
-        });
-        const result = await response.json();
-        if (response.ok && result.ok && typeof result.path === 'string') return result.path;
-        status.textContent = 'No path selected. You can paste a path manually.';
+        const response = await postJson(endpoint, {});
+        if (response.ok && typeof response.path === 'string') return response.path;
+        status.textContent = 'no path selected';
         return null;
       } catch (error) {
-        status.textContent = `Could not open picker: ${error instanceof Error ? error.message : String(error)}`;
+        status.textContent = `picker failed: ${error instanceof Error ? error.message : String(error)}`;
         return null;
       }
     }
 
     async function runDesktopImport(importer, message) {
-      status.textContent = message;
+      showProgress({ jobPhase: message, jobCompleted: 0, jobTotal: 0 });
       try {
         const result = await importer();
         if (result?.ok) window.location.reload();
-        else if (!result?.canceled) status.textContent = result?.error ?? 'Import canceled.';
+        else if (!result?.canceled) status.textContent = result?.error ?? 'import canceled';
       } catch (error) {
-        status.textContent = `Import failed: ${error instanceof Error ? error.message : String(error)}`;
+        status.textContent = `import failed: ${error instanceof Error ? error.message : String(error)}`;
+      } finally {
+        hideProgress();
       }
     }
 
@@ -291,11 +354,11 @@ BACKEND_INDEX_HTML = """<!doctype html>
       event.preventDefault();
       const path = new FormData(event.currentTarget).get('path');
       if (typeof path !== 'string' || !path.trim()) return;
-      await submitImportPath('/api/import/studio', path, 'Importing Studio dataset');
+      await submitImportPath('/api/import/studio', path, 'opening dataset');
     }
 
     async function startFolderImport(path) {
-      status.textContent = `Importing directory: ${path}…`;
+      showProgress({ jobPhase: 'queued', jobCompleted: 0, jobTotal: 0 });
       const response = await fetch('/api/import/folder', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -303,15 +366,17 @@ BACKEND_INDEX_HTML = """<!doctype html>
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
-        status.textContent = `Import failed: ${result.error ?? response.statusText}`;
+        hideProgress();
+        status.textContent = `error — ${result.error ?? response.statusText}`;
         return;
       }
+      onboarding.classList.remove('fade-in');
       onboarding.classList.remove('visible');
       await pollImportProgress();
     }
 
     async function submitImportPath(endpoint, path, label) {
-      status.textContent = `${label}: ${path}…`;
+      status.textContent = label;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -319,7 +384,7 @@ BACKEND_INDEX_HTML = """<!doctype html>
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
-        status.textContent = `Import failed: ${result.error ?? response.statusText}`;
+        status.textContent = `error — ${result.error ?? response.statusText}`;
         return;
       }
       window.location.reload();
@@ -327,21 +392,190 @@ BACKEND_INDEX_HTML = """<!doctype html>
 
     async function pollImportProgress() {
       while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 900));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const current = await fetch('/api/status').then((response) => response.json());
-        const completed = current.jobCompleted ?? 0;
-        const total = current.jobTotal ?? 0;
-        const phase = current.jobPhase ?? current.state ?? 'working';
-        const message = current.jobMessage ? ` — ${current.jobMessage}` : '';
-        status.textContent = total > 0
-          ? `${phase}: ${completed}/${total}${message}`
-          : `${phase}${message}`;
-        if (current.state === 'error' || phase === 'error') return;
-        if ((phase === 'ready' || current.state === 'idle') && current.totalAssets > 0) {
+        latestStatus = current;
+        showProgress(current);
+        if (current.state === 'error' || current.jobPhase === 'error') {
+          hideProgress();
+          status.textContent = `error — ${current.jobMessage ?? 'import failed'}`;
+          return;
+        }
+        if ((current.jobPhase === 'ready' || current.state === 'idle') && current.totalAssets > 0) {
           window.location.reload();
           return;
         }
       }
+    }
+
+    function showProgress(current) {
+      const serverCompleted = current.jobCompleted ?? 0;
+      const total = current.jobTotal ?? 0;
+      const phase = current.jobPhase ?? current.state ?? 'working';
+      visibleProgress = nextVisibleProgress(visibleProgress, serverCompleted, total, phase);
+      const displayCompleted = total > 0 ? Math.min(total, Math.floor(visibleProgress)) : serverCompleted;
+      const percent = total > 0 ? Math.min(100, Math.round((visibleProgress / total) * 100)) : 3;
+      progress.classList.add('visible');
+      progressPhase.textContent = phase;
+      progressCount.textContent = total > 0 ? `${displayCompleted} / ${total}` : '';
+      progressFill.style.width = `${percent}%`;
+      status.textContent = total > 0 ? `${phase} ${displayCompleted}/${total}` : phase;
+      targetStarCount = total > 0 ? Math.min(160, Math.max(8, Math.ceil((visibleProgress / Math.max(total, 1)) * 160))) : 12;
+      drainStarQueue();
+      maybeLogProgress(phase, displayCompleted, total, current.jobMessage ?? '');
+    }
+
+    function nextVisibleProgress(current, serverCompleted, total, phase) {
+      if (total <= 0) return Math.max(current, serverCompleted);
+      if (serverCompleted >= total || phase === 'ready' || phase === 'layout') return serverCompleted;
+      const floor = Math.max(current, serverCompleted);
+      const trickleCap = Math.min(total - 1, serverCompleted + Math.max(1, total * 0.08));
+      return Math.min(trickleCap, floor + Math.max(0.18, total * 0.004));
+    }
+
+    function maybeLogProgress(phase, completed, total, message) {
+      const key = `${phase}:${completed}:${total}:${message}`;
+      if (key === lastProgressLogKey) return;
+      lastProgressLogKey = key;
+      const count = total > 0 ? ` ${completed}/${total}` : '';
+      const suffix = message ? ` — ${message}` : '';
+      progressLogEntries.unshift(`${phase}${count}${suffix}`);
+      progressLogEntries.length = Math.min(progressLogEntries.length, 8);
+      renderProgressLog();
+    }
+
+    function renderProgressLog() {
+      progressLog.replaceChildren(...progressLogEntries.slice(0, 4).map((entry, index) => {
+        const line = document.createElement('div');
+        line.className = 'progress-log-line';
+        line.textContent = index === 0 ? `${spinnerFrames[spinnerFrame]} ${entry}` : `  ${entry}`;
+        return line;
+      }));
+    }
+
+    function hideProgress() {
+      progress.classList.remove('visible');
+      targetStarCount = 0;
+    }
+
+    function drainStarQueue() {
+      if (!progress.classList.contains('visible')) return;
+      if (starCount < targetStarCount) addStar();
+      if (starCount < targetStarCount) window.setTimeout(drainStarQueue, 38);
+    }
+
+    function addStar() {
+      starCount += 1;
+      const star = document.createElement('span');
+      star.className = 'star';
+      const angle = (starCount * 137.508) * Math.PI / 180;
+      const radius = Math.sqrt(starCount / 160) * 44;
+      const jitterX = (Math.random() - .5) * 10;
+      const jitterY = (Math.random() - .5) * 10;
+      star.style.left = `${50 + Math.cos(angle) * radius + jitterX}%`;
+      star.style.top = `${50 + Math.sin(angle) * radius + jitterY}%`;
+      starfield.append(star);
+    }
+
+    function isPlayviewVisible() {
+      return assets.length > 0
+        && !onboarding.classList.contains('visible')
+        && !progress.classList.contains('visible');
+    }
+
+    function showSpawnHelp() {
+      if (!isPlayviewVisible()) return;
+      helpPinnedUntilMovement = true;
+      helpText.classList.add('visible');
+      window.clearTimeout(helpTimer);
+    }
+
+    function showHelp(duration = 4200) {
+      if (!isPlayviewVisible()) return;
+      helpPinnedUntilMovement = false;
+      helpText.classList.add('visible');
+      window.clearTimeout(helpTimer);
+      helpTimer = window.setTimeout(() => helpText.classList.remove('visible'), duration);
+    }
+
+    function hideHelp() {
+      if (menu.classList.contains('visible') || helpPinnedUntilMovement) return;
+      helpText.classList.remove('visible');
+      window.clearTimeout(helpTimer);
+    }
+
+    function scheduleIdleHelp() {
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => showHelp(6000), 5000);
+    }
+
+    function isMovementKey(event) {
+      return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC'].includes(event.code);
+    }
+
+    function noteMovement() {
+      if (!helpPinnedUntilMovement) return;
+      helpPinnedUntilMovement = false;
+      window.clearTimeout(helpTimer);
+      helpTimer = window.setTimeout(() => helpText.classList.remove('visible'), 3200);
+    }
+
+    function noteActivity() {
+      if (!helpPinnedUntilMovement) hideHelp();
+      scheduleIdleHelp();
+    }
+
+    function toggleMenu() {
+      if (menu.classList.contains('visible')) hideMenu();
+      else showMenu();
+    }
+
+    function showMenu() {
+      menu.classList.add('visible');
+      menu.setAttribute('aria-hidden', 'false');
+      menu.querySelector('button')?.focus();
+    }
+
+    function hideMenu() {
+      menu.classList.remove('visible');
+      menu.setAttribute('aria-hidden', 'true');
+      debug.classList.remove('visible');
+      root.querySelector('canvas')?.focus();
+    }
+
+    async function clearData() {
+      if (!confirm('clear all local constellation data?')) return;
+      await postJson('/api/data/clear', {});
+      window.location.reload();
+    }
+
+    async function reimportLastFolder() {
+      const current = latestStatus ?? await fetch('/api/status').then((response) => response.json());
+      const path = current.lastImportPath;
+      if (!path) {
+        status.textContent = 'no last folder';
+        return;
+      }
+      hideMenu();
+      await startFolderImport(path);
+    }
+
+    async function showDebug() {
+      const current = await fetch('/api/status').then((response) => response.json());
+      latestStatus = current;
+      debug.textContent = JSON.stringify(current, null, 2);
+      debug.classList.toggle('visible');
+    }
+
+    async function postJson(url, payload) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || result.ok === false) throw new Error(result.error ?? response.statusText);
+      return result;
     }
 
     function renderFallbackGrid(assets) {
@@ -414,7 +648,7 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         """Serve a HEAD request."""
         self._serve_get(send_body=False)
 
-    def do_POST(self) -> None:  # noqa: PLR0911
+    def do_POST(self) -> None:  # noqa: C901, PLR0911
         """Serve local API mutation requests."""
         route = urlsplit(self.path).path
         try:
@@ -429,6 +663,12 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
                 return
             if route == "/api/dialog/studio":
                 self._post_dialog_studio()
+                return
+            if route == "/api/data/clear":
+                self._post_clear_data()
+                return
+            if route == "/api/system/open-data-dir":
+                self._post_open_data_dir()
                 return
             if route == "/api/index/start":
                 self.store.set_index_state("idle")
@@ -588,6 +828,28 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         finally:
             with self.import_lock:
                 type(self).import_thread = None
+
+    def _post_clear_data(self) -> None:
+        _ = self._read_json_body()
+        with self.import_lock:
+            if (
+                self.import_thread is not None
+                and self.import_thread.is_alive()
+            ):
+                msg = "cannot clear data while an import job is running"
+                raise RuntimeError(msg)
+            self.store.clear_assets()
+            if self.asset_root.exists():
+                shutil.rmtree(self.asset_root)
+            self.asset_root.mkdir(parents=True, exist_ok=True)
+        self._send_json({"ok": True, "status": self.store.status()})
+
+    def _post_open_data_dir(self) -> None:
+        _ = self._read_json_body()
+        data_dir = self.asset_root.parent
+        data_dir.mkdir(parents=True, exist_ok=True)
+        open_path_in_file_manager(data_dir)
+        self._send_json({"ok": True, "path": str(data_dir)})
 
     def _post_dialog_folder(self) -> None:
         _ = self._read_json_body()
@@ -794,6 +1056,18 @@ def query_float(
         return float(raw)
     except ValueError:
         return default
+
+
+def open_path_in_file_manager(path: Path) -> None:
+    """Reveal a local directory in the platform file manager."""
+    system = platform.system().lower()
+    if system == "darwin":
+        subprocess.Popen(["open", str(path)])  # noqa: S603, S607
+        return
+    if system == "windows":
+        subprocess.Popen(["explorer", str(path)])  # noqa: S603, S607
+        return
+    subprocess.Popen(["xdg-open", str(path)])  # noqa: S603, S607
 
 
 def choose_folder_dialog() -> Path | None:
@@ -1070,7 +1344,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedding-batch-size",
         type=int,
-        default=32,
+        default=8,
         help="Images per embedding batch.",
     )
     parser.add_argument(

@@ -115,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedding-batch-size",
         type=int,
-        default=32,
+        default=8,
         help="Images per embedding batch.",
     )
     parser.add_argument(
