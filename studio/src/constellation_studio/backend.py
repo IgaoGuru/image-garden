@@ -85,15 +85,17 @@ BACKEND_INDEX_HTML = """<!doctype html>
     }
 
     const viewer = await importViewer();
-    if (viewer && typeof viewer.mount === 'function' && assets.length > 0) {
-      status.textContent = `Mounted @constellation/viewer with ${assets.length} positioned assets.`;
+    if (viewer && typeof viewer.mount === 'function') {
+      status.textContent = assets.length
+        ? `Mounted @constellation/viewer with ${assets.length} positioned assets.`
+        : 'Viewer ready. Use Library → Import Folder… in the desktop app, or POST /api/import/folder.';
       viewer.mount(root, data, { backgroundColor: 0x050507 });
     } else {
       status.textContent = assets.length
         ? `Viewer package not found; showing ${assets.length} runtime assets from SQLite.`
         : 'No assets indexed yet. Use POST /api/import/folder or the Electron Import Folder menu.';
       root.className = 'fallback';
-      root.innerHTML = '<p>Local API is running. Build <code>@constellation/viewer</code> or use the desktop shell to view imported positioned assets.</p><div class="grid"></div>';
+      root.innerHTML = '<p>Local API is running, but the @constellation/viewer bundle was not found. Run <code>pnpm --filter @constellation/viewer build</code> or start the desktop app with a valid viewer dist.</p><div class="grid"></div>';
       const grid = root.querySelector('.grid');
       for (const asset of assets) {
         const card = document.createElement('article');
