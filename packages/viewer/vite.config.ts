@@ -19,14 +19,9 @@ export default defineConfig({
       fileName: 'constellation-viewer',
       formats: ['es', 'umd'],
     },
-    rollupOptions: {
-      external: ['three'],
-      output: {
-        globals: {
-          three: 'THREE',
-        },
-      },
-    },
+    // Bundle runtime dependencies so Studio can serve `/viewer/constellation-viewer.js`
+    // directly in a plain browser without a bundler/import-map. The package still
+    // exposes normal ESM/UMD library entry points for npm consumers.
     sourcemap: true,
   },
   server: {
