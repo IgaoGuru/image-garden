@@ -62,8 +62,10 @@ BACKEND_INDEX_HTML = """<!doctype html>
     #viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; opacity: 0; transition: opacity 1400ms ease; }
     #viewer.visible { opacity: 1; }
     #status { position: fixed; left: 18px; bottom: 16px; z-index: 5; max-width: calc(100vw - 36px); color: rgba(246,241,232,.54); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-    #help-text { position: fixed; left: 50%; bottom: 18px; z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.52); font-size: 11px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
+    #help-text { position: fixed; left: 50%; bottom: 52px; z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
     #help-text.visible { opacity: 1; }
+    #help-text kbd { color: rgba(246,241,232,.86); font: inherit; }
+    .mouse-icon { color: rgba(246,241,232,.82); }
     #onboarding { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; padding: 28px; background: #000; opacity: 0; transition: opacity 1200ms ease; }
     #onboarding.visible { display: flex; }
     #onboarding.fade-in { opacity: 1; }
@@ -110,7 +112,7 @@ BACKEND_INDEX_HTML = """<!doctype html>
 <body>
   <main id="viewer"></main>
   <div id="status" aria-live="polite">loading</div>
-  <div id="help-text">wasd move · spacebar up · c down · esc go back</div>
+  <div id="help-text"></div>
   <section id="onboarding" aria-live="polite"></section>
   <section id="progress" aria-live="polite">
     <div class="progress-panel">
@@ -156,7 +158,17 @@ BACKEND_INDEX_HTML = """<!doctype html>
     let idleTimer = 0;
     let spinnerFrame = 0;
     let wasPointerLocked = false;
-    let helpPinnedUntilMovement = false;
+    let tutorialActive = false;
+    let tutorialTransitioning = false;
+    let tutorialIndex = 0;
+    const verticalTutorialKeys = new Set();
+    const tutorialSteps = [
+      { id: 'move', text: 'use <kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> to move around' },
+      { id: 'look', text: 'move your <span class="mouse-icon">🖱</span> mouse to move your view' },
+      { id: 'vertical', text: 'use <kbd>space</kbd> and <kbd>C</kbd> to go up and down' },
+      { id: 'slow', text: 'use <kbd>shift</kbd> to go slower' },
+      { id: 'menu', text: 'press <kbd>esc</kbd> to see the menu' },
+    ];
     const spinnerFrames = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠'];
     const progressLogEntries = [];
     window.setInterval(() => {
@@ -208,27 +220,32 @@ BACKEND_INDEX_HTML = """<!doctype html>
     }
 
     if (assets.length === 0) showOnboarding();
-    else showSpawnHelp();
+    else startTutorial();
     scheduleIdleHelp();
-    ['pointermove', 'pointerdown', 'wheel', 'keydown'].forEach((type) => {
+    ['pointerdown', 'wheel', 'keydown'].forEach((type) => {
       window.addEventListener(type, noteActivity, { passive: true });
     });
+    window.addEventListener('pointermove', (event) => {
+      handleTutorialPointerMove(event);
+      noteActivity();
+    }, { passive: true });
 
     document.addEventListener('keydown', (event) => {
-      if (isMovementKey(event)) noteMovement();
+      handleTutorialKey(event);
       if (event.key !== 'Escape') return;
       if (onboarding.classList.contains('visible') || progress.classList.contains('visible')) return;
       event.preventDefault();
       toggleMenu();
-      showHelp(6000);
+      if (!tutorialActive) showHelp('wasd move · spacebar up · c down · esc go back', 6000);
     });
 
     document.addEventListener('pointerlockchange', () => {
       const canvas = root.querySelector('canvas');
       const isPointerLocked = document.pointerLockElement === canvas;
       if (wasPointerLocked && !isPointerLocked && isPlayviewVisible() && !menu.classList.contains('visible')) {
+        completeTutorialStep('menu');
         showMenu();
-        showHelp(6000);
+        if (!tutorialActive) showHelp('wasd move · spacebar up · c down · esc go back', 6000);
       }
       wasPointerLocked = isPointerLocked;
     });
@@ -239,7 +256,7 @@ BACKEND_INDEX_HTML = """<!doctype html>
       const action = button.dataset.menu;
       if (action === 'close') hideMenu();
       if (action === 'reset-camera') { viewerInstance?.resetCamera?.(); hideMenu(); }
-      if (action === 'fit-constellation') { viewerInstance?.fitToContent?.(); hideMenu(); }
+      if (action === 'fit-constellation') { viewerInstance?.fitToContent?.(); hideMenu(); startTutorial(); }
       if (action === 'reimport') await reimportLastFolder();
       if (action === 'open-data') await postJson('/api/system/open-data-dir', {});
       if (action === 'clear-data') await clearData();
@@ -483,45 +500,96 @@ BACKEND_INDEX_HTML = """<!doctype html>
         && !progress.classList.contains('visible');
     }
 
-    function showSpawnHelp() {
+    function startTutorial() {
       if (!isPlayviewVisible()) return;
-      helpPinnedUntilMovement = true;
+      tutorialActive = true;
+      tutorialTransitioning = false;
+      tutorialIndex = 0;
+      verticalTutorialKeys.clear();
+      showTutorialStep();
+    }
+
+    function showTutorialStep() {
+      if (!tutorialActive || !isPlayviewVisible()) return;
+      const step = tutorialSteps[tutorialIndex];
+      if (!step) {
+        tutorialActive = false;
+        hideHelp();
+        return;
+      }
+      helpText.innerHTML = step.text;
       helpText.classList.add('visible');
       window.clearTimeout(helpTimer);
     }
 
-    function showHelp(duration = 4200) {
-      if (!isPlayviewVisible()) return;
-      helpPinnedUntilMovement = false;
+    function completeTutorialStep(stepId) {
+      const step = tutorialSteps[tutorialIndex];
+      if (!tutorialActive || tutorialTransitioning || step?.id !== stepId) return;
+      tutorialTransitioning = true;
+      window.clearTimeout(helpTimer);
+      helpTimer = window.setTimeout(() => {
+        helpText.classList.remove('visible');
+        helpTimer = window.setTimeout(() => {
+          tutorialIndex += 1;
+          tutorialTransitioning = false;
+          if (tutorialIndex >= tutorialSteps.length) {
+            tutorialActive = false;
+            hideHelp();
+            return;
+          }
+          showTutorialStep();
+        }, 1500);
+      }, 1500);
+    }
+
+    function handleTutorialKey(event) {
+      if (!tutorialActive || tutorialTransitioning) return;
+      const step = tutorialSteps[tutorialIndex];
+      if (step?.id === 'move' && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
+        completeTutorialStep('move');
+      }
+      if (step?.id === 'vertical' && ['Space', 'KeyC'].includes(event.code)) {
+        verticalTutorialKeys.add(event.code);
+        if (verticalTutorialKeys.has('Space') && verticalTutorialKeys.has('KeyC')) {
+          completeTutorialStep('vertical');
+        }
+      }
+      if (step?.id === 'slow' && ['ShiftLeft', 'ShiftRight'].includes(event.code)) {
+        completeTutorialStep('slow');
+      }
+      if (step?.id === 'menu' && event.key === 'Escape') {
+        completeTutorialStep('menu');
+      }
+    }
+
+    function handleTutorialPointerMove(event) {
+      const moved = Math.abs(event.movementX ?? 0) + Math.abs(event.movementY ?? 0) > 0;
+      if (tutorialActive && !tutorialTransitioning && tutorialSteps[tutorialIndex]?.id === 'look' && moved) {
+        completeTutorialStep('look');
+      }
+    }
+
+    function showHelp(message, duration = 4200) {
+      if (!isPlayviewVisible() || tutorialActive) return;
+      helpText.textContent = message;
       helpText.classList.add('visible');
       window.clearTimeout(helpTimer);
       helpTimer = window.setTimeout(() => helpText.classList.remove('visible'), duration);
     }
 
     function hideHelp() {
-      if (menu.classList.contains('visible') || helpPinnedUntilMovement) return;
+      if (menu.classList.contains('visible') || tutorialActive) return;
       helpText.classList.remove('visible');
       window.clearTimeout(helpTimer);
     }
 
     function scheduleIdleHelp() {
       window.clearTimeout(idleTimer);
-      idleTimer = window.setTimeout(() => showHelp(6000), 5000);
-    }
-
-    function isMovementKey(event) {
-      return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC'].includes(event.code);
-    }
-
-    function noteMovement() {
-      if (!helpPinnedUntilMovement) return;
-      helpPinnedUntilMovement = false;
-      window.clearTimeout(helpTimer);
-      helpTimer = window.setTimeout(() => helpText.classList.remove('visible'), 3200);
+      idleTimer = window.setTimeout(() => showHelp('wasd move · spacebar up · c down · esc go back', 6000), 5000);
     }
 
     function noteActivity() {
-      if (!helpPinnedUntilMovement) hideHelp();
+      if (!tutorialActive) hideHelp();
       scheduleIdleHelp();
     }
 
