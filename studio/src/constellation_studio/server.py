@@ -98,7 +98,8 @@ INDEX_HTML = """<!doctype html>
         img.src = image.url;
         img.alt = image.id;
         const caption = document.createElement('div');
-        caption.textContent = `${image.id} · ${image.embedding.length}D`;
+        const shape = Array.isArray(image.embedding) ? `${image.embedding.length}D` : 'positioned';
+        caption.textContent = `${image.id} · ${shape}`;
         card.append(img, caption);
         grid.append(card);
       }

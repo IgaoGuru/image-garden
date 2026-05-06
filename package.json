@@ -13,10 +13,14 @@
     "test:e2e": "pnpm --filter @constellation/viewer test:e2e",
     "studio:sync": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --directory studio sync --inexact",
     "studio:embed": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run constellation-embed",
+    "studio:download-onnx": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run constellation-download-onnx",
     "studio:serve": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run constellation-serve",
     "studio:backend": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run constellation-backend",
+    "studio:app": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run constellation-app",
+    "studio:clear": "node scripts/clear-app-data.mjs",
     "studio:test": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run pytest",
-    "desktop:dev": "pnpm --filter @constellation/desktop dev"
+    "desktop:dev": "pnpm --filter @constellation/desktop dev",
+    "release:bundle": "bash scripts/build-release.sh"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

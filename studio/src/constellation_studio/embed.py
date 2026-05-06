@@ -7,7 +7,6 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from constellation_studio.assets import (
     DEFAULT_ASSET_URL_PREFIX,
@@ -19,9 +18,9 @@ from constellation_studio.assets import (
     sanitize_directory,
 )
 from constellation_studio.cache import EmbeddingCache
-from constellation_studio.open_clip_backend import (
-    OpenClipImageEmbedder,
-    default_device,
+from constellation_studio.embedding_providers import (
+    EmbeddingProvider,
+    create_embedding_provider,
 )
 from constellation_studio.schema import (
     EmbeddedImage,
@@ -37,14 +36,6 @@ DEFAULT_OUTPUT = Path("constellation.json")
 Embedding = tuple[float, ...]
 ProgressCallback = Callable[[int, int], None]
 WarnCallback = Callable[[str], None]
-
-
-class ImageEmbedder(Protocol):
-    """Minimal embedding backend interface."""
-
-    def embed_images(self, paths: Sequence[Path]) -> list[Embedding]:
-        """Embed image paths in order."""
-        raise NotImplementedError
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +59,7 @@ class EmbedOptions:
 class EmbedContext:
     """Shared dependencies for embedding uncached records."""
 
-    embedder: ImageEmbedder
+    embedder: EmbeddingProvider
     cache: EmbeddingCache
     options: EmbedOptions
     completed_offset: int
@@ -89,7 +80,7 @@ def batched[T](paths: Sequence[T], batch_size: int) -> list[Sequence[T]]:
 def embed_batch_individually(
     records: Sequence[SanitizedImage],
     *,
-    embedder: ImageEmbedder,
+    embedder: EmbeddingProvider,
     warn: Callable[[str], None] | None = None,
 ) -> list[tuple[SanitizedImage, Embedding]]:
     """Embed records one at a time, returning only successful records."""
@@ -115,7 +106,7 @@ def embed_batch_individually(
 def embed_batch(
     records: Sequence[SanitizedImage],
     *,
-    embedder: ImageEmbedder,
+    embedder: EmbeddingProvider,
     skip_errors: bool,
     warn: WarnCallback | None,
 ) -> list[tuple[SanitizedImage, Embedding]]:
@@ -141,7 +132,7 @@ def embed_batch(
 def embed_directory(
     image_root: Path,
     *,
-    embedder: ImageEmbedder,
+    embedder: EmbeddingProvider,
     options: EmbedOptions | None = None,
 ) -> list[EmbeddedImage]:
     """Ingest *image_root*, embed sanitized JPEGs, and return records."""
@@ -325,6 +316,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"JPEG quality for generated assets (default: {DEFAULT_JPEG_QUALITY}).",
     )
     parser.add_argument(
+        "--embedding-engine",
+        choices=["openclip", "onnx"],
+        default="openclip",
+        help="Embedding engine to use (default: openclip).",
+    )
+    parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
         help=f"open_clip model name (default: {DEFAULT_MODEL}).",
@@ -338,6 +335,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--device",
         default="auto",
         help="Torch device: auto, cpu, mps, or cuda (default: auto).",
+    )
+    parser.add_argument(
+        "--onnx-model",
+        type=Path,
+        default=None,
+        help="Path to an ONNX image encoder when using --embedding-engine=onnx.",
+    )
+    parser.add_argument(
+        "--onnx-provider",
+        default="auto",
+        help="ONNX Runtime provider: auto, cpu, cuda, directml, coreml.",
     )
     parser.add_argument(
         "--batch-size",
@@ -376,18 +384,24 @@ def run(args: argparse.Namespace) -> int:
         if args.asset_dir is not None
         else default_asset_root(output)
     )
-    device_arg = str(args.device)
-    device = default_device() if device_arg == "auto" else device_arg
+    device = str(args.device)
     model = str(args.model)
     pretrained = str(args.pretrained)
-    cache_namespace = f"open_clip/{model}/{pretrained}"
-
-    print(f"Loading CLIP model {model}/{pretrained} on {device}...")
-    embedder = OpenClipImageEmbedder(
+    engine = str(args.embedding_engine)
+    embedder = create_embedding_provider(
+        engine=engine,
         model=model,
         pretrained=pretrained,
         device=device,
+        onnx_model=args.onnx_model,
+        onnx_provider=str(args.onnx_provider),
     )
+    if embedder is None:
+        msg = "constellation-embed requires an embedding engine"
+        raise ValueError(msg)
+    cache_namespace = embedder.cache_namespace
+
+    print(f"Loading embedding engine {cache_namespace}...")
 
     print(f"Ingesting images under {image_dir.expanduser().resolve()}...")
     print(f"Writing sanitized assets under {asset_root}...")

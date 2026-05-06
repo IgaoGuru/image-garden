@@ -33,6 +33,11 @@ class IndexStatus(TypedDict):
     importedAssets: int
     dbPath: str
     assetRoot: str
+    jobPhase: NotRequired[str]
+    jobCompleted: NotRequired[int]
+    jobTotal: NotRequired[int]
+    jobMessage: NotRequired[str]
+    embeddingEngine: NotRequired[str]
     lastImportPath: NotRequired[str]
 
 
@@ -102,6 +107,7 @@ class IndexStore:
             )
             self._set_status_value(connection, "state", "idle")
             self._set_status_value(connection, "paused", "false")
+            self._set_status_value(connection, "jobPhase", "idle")
 
     def upsert_asset(self, asset: StoredRuntimeAsset) -> None:
         """Insert or update a runtime asset."""
@@ -173,6 +179,26 @@ class IndexStore:
                 "paused" if paused else "idle",
             )
 
+    def set_job_progress(
+        self,
+        *,
+        phase: str,
+        completed: int,
+        total: int,
+        message: str = "",
+    ) -> None:
+        """Persist coarse progress for the current local job."""
+        with self._connect() as connection:
+            self._set_status_value(connection, "jobPhase", phase)
+            self._set_status_value(connection, "jobCompleted", str(completed))
+            self._set_status_value(connection, "jobTotal", str(total))
+            self._set_status_value(connection, "jobMessage", message)
+
+    def set_embedding_engine(self, engine: str) -> None:
+        """Persist the selected embedding engine for status displays."""
+        with self._connect() as connection:
+            self._set_status_value(connection, "embeddingEngine", engine)
+
     def set_last_import_path(self, path: Path) -> None:
         """Persist the last imported folder path."""
         with self._connect() as connection:
@@ -194,6 +220,21 @@ class IndexStore:
             "dbPath": str(self.db_path),
             "assetRoot": str(self.asset_root),
         }
+        job_phase = values.get("jobPhase")
+        if job_phase is not None:
+            status["jobPhase"] = job_phase
+        job_completed = optional_status_int(values, "jobCompleted")
+        if job_completed is not None:
+            status["jobCompleted"] = job_completed
+        job_total = optional_status_int(values, "jobTotal")
+        if job_total is not None:
+            status["jobTotal"] = job_total
+        job_message = values.get("jobMessage")
+        if job_message:
+            status["jobMessage"] = job_message
+        embedding_engine = values.get("embeddingEngine")
+        if embedding_engine:
+            status["embeddingEngine"] = embedding_engine
         last_import_path = values.get("lastImportPath")
         if last_import_path is not None:
             status["lastImportPath"] = last_import_path
@@ -393,6 +434,17 @@ def optional_int(row: sqlite3.Row, key: str) -> int | None:
     if value is None:
         return None
     return int(str(value))
+
+
+def optional_status_int(values: Mapping[str, str], key: str) -> int | None:
+    """Return an optional integer status value."""
+    raw = values.get(key)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def iter_assets(store: IndexStore) -> Iterator[RuntimeAsset]:

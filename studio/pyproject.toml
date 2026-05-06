@@ -6,16 +6,26 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.0",
-    "open-clip-torch>=3.0.0",
     "pillow>=11.0",
     "pillow-heif>=1.1.1",
+    "umap-learn>=0.5.7",
+]
+
+[project.optional-dependencies]
+openclip = [
+    "open-clip-torch>=3.0.0",
     "torch>=2.10.0",
     "torchvision>=0.25.0",
 ]
+onnx = [
+    "onnxruntime>=1.20.0",
+]
 
 [project.scripts]
+constellation-app = "constellation_studio.app:main"
 constellation-backend = "constellation_studio.backend:main"
 constellation-embed = "constellation_studio.embed:main"
+constellation-download-onnx = "constellation_studio.download_onnx:main"
 constellation-serve = "constellation_studio.server:main"
 
 [dependency-groups]
@@ -63,7 +73,9 @@ ignore = [
 typeCheckingMode = "strict"
 pythonVersion = "3.13"
 include = ["src", "tests", "embed.py", "serve.py"]
-exclude = ["src/constellation_studio/open_clip_backend.py"]
+exclude = [
+    "src/constellation_studio/open_clip_backend.py",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"

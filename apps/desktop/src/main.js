@@ -103,12 +103,12 @@ async function createWindow() {
   mainWindow.loadURL(process.env.CONSTELLATION_VIEWER_URL ?? url);
 }
 
-async function importFolder(folderPath) {
+async function postImport(endpoint, filePath) {
   if (!backendUrl) throw new Error('Backend is not ready.');
-  const response = await fetch(new URL('/api/import/folder', backendUrl), {
+  const response = await fetch(new URL(endpoint, backendUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: folderPath }),
+    body: JSON.stringify({ path: filePath }),
   });
   const payload = await response.json();
   if (!response.ok) {
@@ -117,13 +117,34 @@ async function importFolder(folderPath) {
   return payload;
 }
 
+async function importFolder(folderPath) {
+  return postImport('/api/import/folder', folderPath);
+}
+
+async function importStudio(studioPath) {
+  return postImport('/api/import/studio', studioPath);
+}
+
 async function chooseAndImportFolder() {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Import photo folder',
+    title: 'Import photo directory',
     properties: ['openDirectory'],
   });
   if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true };
   return importFolder(result.filePaths[0]);
+}
+
+async function chooseAndImportStudio() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import Constellation Studio dataset',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Constellation Studio dataset', extensions: ['json'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { ok: false, canceled: true };
+  return importStudio(result.filePaths[0]);
 }
 
 function installMenu() {
@@ -140,10 +161,23 @@ function installMenu() {
       label: 'Library',
       submenu: [
         {
-          label: 'Import Folder…',
+          label: 'Import Photo Directory…',
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             chooseAndImportFolder()
+              .then((result) => {
+                if (result?.ok) mainWindow?.reload();
+              })
+              .catch((error) => {
+                dialog.showErrorBox('Import failed', String(error));
+              });
+          },
+        },
+        {
+          label: 'Import Studio Dataset…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => {
+            chooseAndImportStudio()
               .then((result) => {
                 if (result?.ok) mainWindow?.reload();
               })
@@ -163,9 +197,14 @@ function installMenu() {
 
 ipcMain.handle('constellation:getBackendUrl', () => backendUrl);
 ipcMain.handle('constellation:openImportFolder', async () => chooseAndImportFolder());
+ipcMain.handle('constellation:openImportStudio', async () => chooseAndImportStudio());
 ipcMain.handle('constellation:importFolder', async (_event, folderPath) => {
   if (typeof folderPath !== 'string') return null;
   return importFolder(folderPath);
+});
+ipcMain.handle('constellation:importStudio', async (_event, studioPath) => {
+  if (typeof studioPath !== 'string') return null;
+  return importStudio(studioPath);
 });
 
 app.whenReady().then(() => {

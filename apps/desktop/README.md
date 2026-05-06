@@ -6,8 +6,11 @@ What it does:
 
 - starts `constellation-backend` in the app data directory;
 - loads the backend's web runtime page (or `CONSTELLATION_VIEWER_URL`);
-- exposes an **Import Folder…** menu item that calls `POST /api/import/folder`;
+- exposes **Import Photo Directory…** and **Import Studio Dataset…** menu items;
+- calls `POST /api/import/folder` or `POST /api/import/studio` against the local backend;
 - keeps viewer rendering in `@constellation/viewer` instead of forking renderer code.
+
+Scope: this app is bring-your-own photos only. Use a directory/export or a Constellation Studio dataset; no cloud photo connector is exposed.
 
 Development:
 
