@@ -259,8 +259,8 @@ def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
         assert all(source["enabled"] is True for source in sources["sources"])
 
         index_html = fetch_text(base_url)
-        assert "Bring your own photos" in index_html
-        assert "Constellation Studio dataset" in index_html
+        assert "build your constellation of images" in index_html
+        assert "already have a image-embedding dataset?" in index_html
         assert "cloud connector" not in index_html
 
         imported = post_json(
@@ -301,3 +301,13 @@ def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
             assert exc.code == 404
         else:  # pragma: no cover
             raise AssertionError("missing asset unexpectedly resolved")
+
+        cleared = post_json(f"{base_url}api/data/clear", {})
+        assert isinstance(cleared, dict)
+        assert cleared["ok"] is True
+        cleared_status = fetch_json(f"{base_url}api/status")
+        assert isinstance(cleared_status, dict)
+        assert cleared_status["totalAssets"] == 0
+        listed_after_clear = fetch_json(f"{base_url}api/assets?limit=10")
+        assert isinstance(listed_after_clear, dict)
+        assert listed_after_clear["assets"] == []

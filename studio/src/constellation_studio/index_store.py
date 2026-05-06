@@ -240,6 +240,18 @@ class IndexStore:
             status["lastImportPath"] = last_import_path
         return status
 
+    def clear_assets(self) -> None:
+        """Clear indexed assets and reset import progress/status."""
+        with self._connect() as connection:
+            connection.execute("DELETE FROM assets")
+            self._set_status_value(connection, "state", "idle")
+            self._set_status_value(connection, "paused", "false")
+            self._set_status_value(connection, "jobPhase", "idle")
+            self._set_status_value(connection, "jobCompleted", "0")
+            self._set_status_value(connection, "jobTotal", "0")
+            self._set_status_value(connection, "jobMessage", "")
+            self._set_status_value(connection, "lastImportPath", "")
+
     def count_assets(self) -> int:
         """Return the number of indexed runtime assets."""
         with self._connect() as connection:

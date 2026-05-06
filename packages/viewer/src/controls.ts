@@ -28,8 +28,8 @@ export function createFlyControls(
 ): FlyControls {
   const enabled = options.enabled ?? true;
   const clickToLock = options.clickToLock ?? true;
-  const moveSpeed = options.moveSpeed ?? 45;
-  const sprintMultiplier = options.sprintMultiplier ?? 3;
+  const moveSpeed = options.moveSpeed ?? 135;
+  const sprintMultiplier = options.sprintMultiplier ?? 1 / 3;
   const verticalSpeed = options.verticalSpeed ?? moveSpeed;
   const pointer = new PointerLockControls(camera, domElement);
   const forwardDirection = new Vector3();

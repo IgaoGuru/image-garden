@@ -158,6 +158,8 @@ export interface ConstellationViewer {
   readonly positions: PositionedImage[];
   destroy(): void;
   focus(): void;
+  fitToContent(): void;
+  resetCamera(): void;
   setData(data: ConstellationData): void;
   setSelected(id: string | null): void;
 }
