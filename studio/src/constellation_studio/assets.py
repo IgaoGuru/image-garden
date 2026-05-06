@@ -240,6 +240,7 @@ def prepare_sanitized_image(
         raise ValueError(msg)
 
     with Image.open(path) as source:
+        source.draft("RGB", (options.max_image_size, options.max_image_size))
         image = ImageOps.exif_transpose(source).convert("RGB")
 
     canonical = resize_copy(image, options.max_image_size)
