@@ -7,7 +7,9 @@ of Studio keeps precise typed interfaces around it.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -57,16 +59,7 @@ class OpenClipImageEmbedder:
     def embed_images(self, paths: Sequence[Path]) -> list[tuple[float, ...]]:
         """Embed one batch of image paths."""
         torch = self._torch
-        tensors = []
-        for path in paths:
-            try:
-                with Image.open(path) as image:
-                    normalized = ImageOps.exif_transpose(image).convert("RGB")
-                    tensors.append(self._preprocess(normalized))
-            except OSError as exc:
-                msg = f"failed to load image {path}: {exc}"
-                raise RuntimeError(msg) from exc
-
+        tensors = self._preprocess_images(paths)
         batch = torch.stack(tensors).to(self._device)
         with torch.no_grad():
             features = self._model.encode_image(batch)
@@ -76,3 +69,23 @@ class OpenClipImageEmbedder:
         return [
             tuple(float(value) for value in row.tolist()) for row in features
         ]
+
+    def _preprocess_images(self, paths: Sequence[Path]) -> list[object]:
+        """Load and preprocess image batch using CPU worker threads."""
+        if len(paths) <= 1:
+            return [self._preprocess_image(path) for path in paths]
+        worker_count = min(len(paths), os.process_cpu_count() or 1, 8)
+        if worker_count <= 1:
+            return [self._preprocess_image(path) for path in paths]
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            return list(executor.map(self._preprocess_image, paths))
+
+    def _preprocess_image(self, path: Path) -> object:
+        """Load and preprocess one image."""
+        try:
+            with Image.open(path) as image:
+                normalized = ImageOps.exif_transpose(image).convert("RGB")
+                return self._preprocess(normalized)
+        except OSError as exc:
+            msg = f"failed to load image {path}: {exc}"
+            raise RuntimeError(msg) from exc
