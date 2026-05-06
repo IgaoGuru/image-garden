@@ -29,12 +29,14 @@ From the repo root:
 
 ```bash
 pnpm studio:sync
-pnpm studio:embed /path/to/photos --output constellation.json --skip-errors
+pnpm studio:embed /path/to/photos --output constellation.json --batch-size 8 --skip-errors
 pnpm build
 pnpm studio:serve
 ```
 
 The `studio:*` scripts load `.env` automatically before invoking `uv`.
+
+`studio:embed` ingests HEIC/HEIF/JPEG/PNG/etc. sources into sanitized JPEG assets under `constellation-assets/`, hashes the canonical JPEG bytes for stable ids, writes thumbnails, and caches embeddings for reruns.
 
 ## Checks
 

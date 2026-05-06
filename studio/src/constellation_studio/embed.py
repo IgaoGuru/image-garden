@@ -9,11 +9,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from constellation_studio.images import (
-    discover_image_files,
-    image_id,
-    image_url,
+from constellation_studio.assets import (
+    DEFAULT_ASSET_URL_PREFIX,
+    DEFAULT_JPEG_QUALITY,
+    DEFAULT_MAX_IMAGE_SIZE,
+    DEFAULT_THUMBNAIL_SIZE,
+    AssetOptions,
+    SanitizedImage,
+    sanitize_directory,
 )
+from constellation_studio.cache import EmbeddingCache
 from constellation_studio.open_clip_backend import (
     OpenClipImageEmbedder,
     default_device,
@@ -28,7 +33,6 @@ DEFAULT_MODEL = "ViT-B-32"
 DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_OUTPUT = Path("constellation.json")
-DEFAULT_URL_PREFIX = "/images/"
 
 Embedding = tuple[float, ...]
 ProgressCallback = Callable[[int, int], None]
@@ -47,15 +51,32 @@ class ImageEmbedder(Protocol):
 class EmbedOptions:
     """Options for embedding a directory."""
 
-    url_prefix: str = DEFAULT_URL_PREFIX
+    asset_root: Path | None = None
+    asset_url_prefix: str = DEFAULT_ASSET_URL_PREFIX
+    max_image_size: int = DEFAULT_MAX_IMAGE_SIZE
+    thumbnail_size: int = DEFAULT_THUMBNAIL_SIZE
+    jpeg_quality: int = DEFAULT_JPEG_QUALITY
     batch_size: int = DEFAULT_BATCH_SIZE
     progress: ProgressCallback | None = None
     skip_errors: bool = False
     warn: WarnCallback | None = None
+    cache_namespace: str = "default"
+    use_cache: bool = True
 
 
-def batched(paths: Sequence[Path], batch_size: int) -> list[Sequence[Path]]:
-    """Split a path sequence into non-empty batches."""
+@dataclass(frozen=True, slots=True)
+class EmbedContext:
+    """Shared dependencies for embedding uncached records."""
+
+    embedder: ImageEmbedder
+    cache: EmbeddingCache
+    options: EmbedOptions
+    completed_offset: int
+    total: int
+
+
+def batched[T](paths: Sequence[T], batch_size: int) -> list[Sequence[T]]:
+    """Split a sequence into non-empty batches."""
     if batch_size < 1:
         msg = "batch size must be >= 1"
         raise ValueError(msg)
@@ -66,49 +87,52 @@ def batched(paths: Sequence[Path], batch_size: int) -> list[Sequence[Path]]:
 
 
 def embed_batch_individually(
-    paths: Sequence[Path],
+    records: Sequence[SanitizedImage],
     *,
     embedder: ImageEmbedder,
     warn: Callable[[str], None] | None = None,
-) -> list[tuple[Path, Embedding]]:
-    """Embed paths one at a time, returning only successful records."""
-    records: list[tuple[Path, Embedding]] = []
-    for path in paths:
+) -> list[tuple[SanitizedImage, Embedding]]:
+    """Embed records one at a time, returning only successful records."""
+    embedded: list[tuple[SanitizedImage, Embedding]] = []
+    for record in records:
         try:
-            embeddings = embedder.embed_images([path])
+            embeddings = embedder.embed_images([record.image_path])
         except RuntimeError as exc:
             if warn is not None:
-                warn(f"Skipping {path}: {exc}")
+                warn(f"Skipping {record.source_path}: {exc}")
             continue
         if len(embeddings) != 1:
             if warn is not None:
                 warn(
-                    f"Skipping {path}: backend returned {len(embeddings)} vectors"
+                    f"Skipping {record.source_path}: backend returned "
+                    f"{len(embeddings)} vectors",
                 )
             continue
-        records.append((path, embeddings[0]))
-    return records
+        embedded.append((record, embeddings[0]))
+    return embedded
 
 
 def embed_batch(
-    paths: Sequence[Path],
+    records: Sequence[SanitizedImage],
     *,
     embedder: ImageEmbedder,
     skip_errors: bool,
     warn: WarnCallback | None,
-) -> list[tuple[Path, Embedding]]:
+) -> list[tuple[SanitizedImage, Embedding]]:
     """Embed one batch, optionally retrying one-by-one on failure."""
     try:
-        embeddings = embedder.embed_images(paths)
+        embeddings = embedder.embed_images(
+            [record.image_path for record in records]
+        )
     except RuntimeError:
         if not skip_errors:
             raise
-        return embed_batch_individually(paths, embedder=embedder, warn=warn)
+        return embed_batch_individually(records, embedder=embedder, warn=warn)
 
-    if len(embeddings) == len(paths):
-        return list(zip(paths, embeddings, strict=True))
+    if len(embeddings) == len(records):
+        return list(zip(records, embeddings, strict=True))
     if skip_errors:
-        return embed_batch_individually(paths, embedder=embedder, warn=warn)
+        return embed_batch_individually(records, embedder=embedder, warn=warn)
 
     msg = "embedding backend returned the wrong number of vectors"
     raise RuntimeError(msg)
@@ -120,43 +144,126 @@ def embed_directory(
     embedder: ImageEmbedder,
     options: EmbedOptions | None = None,
 ) -> list[EmbeddedImage]:
-    """Walk *image_root*, embed images, and return viewer-ready records."""
+    """Ingest *image_root*, embed sanitized JPEGs, and return records."""
     root = image_root.expanduser().resolve()
-    paths = discover_image_files(root)
-    if not paths:
-        msg = f"no supported images found under {root}"
-        raise ValueError(msg)
-
     opts = options or EmbedOptions()
-    total = len(paths)
-    completed = 0
-    embedded: list[EmbeddedImage] = []
-    skipped = 0
-    for batch in batched(paths, opts.batch_size):
-        records = embed_batch(
-            batch,
-            embedder=embedder,
+    asset_root = (
+        opts.asset_root.expanduser().resolve()
+        if opts.asset_root is not None
+        else (Path.cwd() / "constellation-assets").resolve()
+    )
+    sanitized = sanitize_directory(
+        root,
+        options=AssetOptions(
+            asset_root=asset_root,
+            asset_url_prefix=opts.asset_url_prefix,
+            max_image_size=opts.max_image_size,
+            thumbnail_size=opts.thumbnail_size,
+            jpeg_quality=opts.jpeg_quality,
             skip_errors=opts.skip_errors,
             warn=opts.warn,
-        )
-        skipped += len(batch) - len(records)
-        for path, embedding in records:
-            embedded.append(
-                EmbeddedImage(
-                    id=image_id(path, root),
-                    url=image_url(path, root, opts.url_prefix),
-                    embedding=embedding,
-                )
-            )
-        completed += len(batch)
-        if opts.progress is not None:
-            opts.progress(completed, total)
-    if not embedded:
-        msg = f"all {total} discovered images failed to embed"
+        ),
+    )
+
+    cache = EmbeddingCache(asset_root, opts.cache_namespace)
+    cached, to_embed = cached_embeddings(
+        sanitized,
+        cache=cache,
+        use_cache=opts.use_cache,
+        progress=opts.progress,
+    )
+    embedded, skipped = embed_uncached(
+        to_embed,
+        context=EmbedContext(
+            embedder=embedder,
+            cache=cache,
+            options=opts,
+            completed_offset=len(cached),
+            total=len(sanitized),
+        ),
+    )
+    all_embedded = [*cached, *embedded]
+
+    if not all_embedded:
+        msg = f"all {len(sanitized)} sanitized images failed to embed"
         raise RuntimeError(msg)
+    if cached and opts.warn is not None:
+        opts.warn(f"Reused {len(cached)} cached embedding(s).")
     if skipped and opts.warn is not None:
         opts.warn(f"Skipped {skipped} image(s) that failed to embed.")
-    return embedded
+
+    all_embedded.sort(key=lambda image: image.id)
+    return all_embedded
+
+
+def cached_embeddings(
+    records: Sequence[SanitizedImage],
+    *,
+    cache: EmbeddingCache,
+    use_cache: bool,
+    progress: ProgressCallback | None,
+) -> tuple[list[EmbeddedImage], list[SanitizedImage]]:
+    """Split records into cached embedded images and records still needed."""
+    embedded: list[EmbeddedImage] = []
+    missing: list[SanitizedImage] = []
+    for record in records:
+        cached = cache.get(record.id) if use_cache else None
+        if cached is None:
+            missing.append(record)
+            continue
+        embedded.append(embedded_image(record, cached))
+        if progress is not None:
+            progress(len(embedded), len(records))
+    return embedded, missing
+
+
+def embed_uncached(
+    records: Sequence[SanitizedImage],
+    *,
+    context: EmbedContext,
+) -> tuple[list[EmbeddedImage], int]:
+    """Embed uncached records and return viewer images plus skip count."""
+    embedded: list[EmbeddedImage] = []
+    skipped = 0
+    completed = context.completed_offset
+    options = context.options
+    for batch in batched(records, options.batch_size):
+        batch_records = embed_batch(
+            batch,
+            embedder=context.embedder,
+            skip_errors=options.skip_errors,
+            warn=options.warn,
+        )
+        skipped += len(batch) - len(batch_records)
+        batch_by_id = {
+            record.id: embedding for record, embedding in batch_records
+        }
+        for record in batch:
+            embedding = batch_by_id.get(record.id)
+            if embedding is None:
+                continue
+            if options.use_cache:
+                context.cache.set(record.id, embedding)
+            embedded.append(embedded_image(record, embedding))
+        completed += len(batch)
+        if options.progress is not None:
+            options.progress(completed, context.total)
+    return embedded, skipped
+
+
+def embedded_image(
+    record: SanitizedImage, embedding: Embedding
+) -> EmbeddedImage:
+    """Build a viewer image record from a sanitized image and embedding."""
+    return EmbeddedImage(
+        id=record.id,
+        url=record.url,
+        thumbnail_url=record.thumbnail_url,
+        embedding=embedding,
+        width=record.width,
+        height=record.height,
+        metadata={"sourcePath": str(record.source_path)},
+    )
 
 
 def positive_int(value: str) -> int:
@@ -186,9 +293,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output JSON path (default: constellation.json).",
     )
     parser.add_argument(
+        "--asset-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory for sanitized JPEGs, thumbnails, and cache "
+            "(default: <output-stem>-assets next to output)."
+        ),
+    )
+    parser.add_argument(
         "--url-prefix",
-        default=DEFAULT_URL_PREFIX,
-        help="URL prefix used by serve.py for image URLs (default: /images/).",
+        default=DEFAULT_ASSET_URL_PREFIX,
+        help="URL prefix used by serve.py for generated assets (default: /assets/).",
+    )
+    parser.add_argument(
+        "--max-image-size",
+        type=positive_int,
+        default=DEFAULT_MAX_IMAGE_SIZE,
+        help=f"Canonical JPEG long edge in pixels (default: {DEFAULT_MAX_IMAGE_SIZE}).",
+    )
+    parser.add_argument(
+        "--thumbnail-size",
+        type=positive_int,
+        default=DEFAULT_THUMBNAIL_SIZE,
+        help=f"Thumbnail JPEG long edge in pixels (default: {DEFAULT_THUMBNAIL_SIZE}).",
+    )
+    parser.add_argument(
+        "--jpeg-quality",
+        type=positive_int,
+        default=DEFAULT_JPEG_QUALITY,
+        help=f"JPEG quality for generated assets (default: {DEFAULT_JPEG_QUALITY}).",
     )
     parser.add_argument(
         "--model",
@@ -218,43 +352,69 @@ def build_parser() -> argparse.ArgumentParser:
             "Skip unreadable images after retrying failed batches one-by-one."
         ),
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Recompute embeddings instead of reading/writing the embedding cache.",
+    )
     return parser
+
+
+def default_asset_root(output: Path) -> Path:
+    """Return the default asset root for an output JSON path."""
+    resolved = output.expanduser().resolve()
+    stem = resolved.stem if resolved.suffix else resolved.name
+    return resolved.with_name(f"{stem}-assets")
 
 
 def run(args: argparse.Namespace) -> int:
     """Run the embedding CLI from parsed args."""
     image_dir = Path(args.image_dir)
     output = Path(args.output)
+    asset_root = (
+        Path(args.asset_dir).expanduser().resolve()
+        if args.asset_dir is not None
+        else default_asset_root(output)
+    )
     device_arg = str(args.device)
     device = default_device() if device_arg == "auto" else device_arg
+    model = str(args.model)
+    pretrained = str(args.pretrained)
+    cache_namespace = f"open_clip/{model}/{pretrained}"
 
-    print(
-        f"Loading CLIP model {args.model!s}/{args.pretrained!s} on {device}..."
-    )
+    print(f"Loading CLIP model {model}/{pretrained} on {device}...")
     embedder = OpenClipImageEmbedder(
-        model=str(args.model),
-        pretrained=str(args.pretrained),
+        model=model,
+        pretrained=pretrained,
         device=device,
     )
 
-    print(f"Embedding images under {image_dir.expanduser().resolve()}...")
+    print(f"Ingesting images under {image_dir.expanduser().resolve()}...")
+    print(f"Writing sanitized assets under {asset_root}...")
+
     images = embed_directory(
         image_dir,
         embedder=embedder,
         options=EmbedOptions(
-            url_prefix=str(args.url_prefix),
+            asset_root=asset_root,
+            asset_url_prefix=str(args.url_prefix),
+            max_image_size=int(args.max_image_size),
+            thumbnail_size=int(args.thumbnail_size),
+            jpeg_quality=int(args.jpeg_quality),
             batch_size=int(args.batch_size),
             progress=lambda completed, total: print(
                 f"Embedded {completed}/{total} images..."
             ),
             skip_errors=bool(args.skip_errors),
             warn=lambda message: print(f"warning: {message}", file=sys.stderr),
+            cache_namespace=cache_namespace,
+            use_cache=not bool(args.no_cache),
         ),
     )
     write_constellation_json(output, images)
     manifest_path = write_studio_manifest(
         data_path=output,
-        image_root=image_dir,
+        image_root=asset_root,
         url_prefix=str(args.url_prefix),
     )
     embedding_dim = len(images[0].embedding) if images else 0

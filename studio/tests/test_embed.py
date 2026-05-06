@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from constellation_studio.assets import AssetOptions, sanitize_directory
+from constellation_studio.cache import EmbeddingCache
 from constellation_studio.embed import EmbedOptions, embed_directory
 from constellation_studio.images import (
     discover_image_files,
@@ -20,7 +22,11 @@ from constellation_studio.schema import (
 
 
 class FakeEmbedder:
+    def __init__(self) -> None:
+        self.calls: list[list[Path]] = []
+
     def embed_images(self, paths: Sequence[Path]) -> list[tuple[float, ...]]:
+        self.calls.append(list(paths))
         return [
             (float(index), float(path.stat().st_size))
             for index, path in enumerate(paths)
@@ -28,16 +34,23 @@ class FakeEmbedder:
 
 
 class FailingEmbedder:
+    def __init__(self) -> None:
+        self.single_calls = 0
+
     def embed_images(self, paths: Sequence[Path]) -> list[tuple[float, ...]]:
-        if any(path.name == "bad.jpg" for path in paths):
+        if len(paths) > 1:
+            msg = "bad test batch"
+            raise RuntimeError(msg)
+        self.single_calls += 1
+        if self.single_calls == 2:
             msg = "bad test image"
             raise RuntimeError(msg)
-        return [(float(len(path.name)),) for path in paths]
+        return [(float(path.stat().st_size),) for path in paths]
 
 
 def create_image(path: Path, color: tuple[int, int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (2, 2), color).save(path)
+    Image.new("RGB", (8, 6), color).save(path)
 
 
 def test_discover_image_files_is_recursive_and_sorted(tmp_path: Path) -> None:
@@ -53,6 +66,16 @@ def test_discover_image_files_is_recursive_and_sorted(tmp_path: Path) -> None:
     ]
 
 
+def test_discover_image_files_includes_heic_extensions(tmp_path: Path) -> None:
+    (tmp_path / "photo.HEIC").write_bytes(b"not real heic")
+    (tmp_path / "photo.heif").write_bytes(b"not real heif")
+
+    assert [path.name for path in discover_image_files(tmp_path)] == [
+        "photo.HEIC",
+        "photo.heif",
+    ]
+
+
 def test_image_url_quotes_path_segments(tmp_path: Path) -> None:
     path = tmp_path / "space dir" / "é image.jpg"
     create_image(path, (0, 0, 255))
@@ -65,15 +88,49 @@ def test_image_url_quotes_path_segments(tmp_path: Path) -> None:
     )
 
 
+def test_sanitize_directory_writes_hashed_jpegs_and_thumbnails(
+    tmp_path: Path,
+) -> None:
+    create_image(tmp_path / "raw" / "one.png", (255, 0, 0))
+    create_image(tmp_path / "raw" / "duplicate.jpg", (255, 0, 0))
+    warnings: list[str] = []
+
+    sanitized = sanitize_directory(
+        tmp_path / "raw",
+        options=AssetOptions(
+            asset_root=tmp_path / "assets",
+            warn=warnings.append,
+        ),
+    )
+
+    assert len(sanitized) == 1
+    record = sanitized[0]
+    assert len(record.id) == 64
+    assert (
+        record.image_path
+        == tmp_path / "assets" / "images" / f"{record.id}.jpg"
+    )
+    assert (
+        record.thumbnail_path
+        == tmp_path / "assets" / "thumbs" / f"{record.id}.jpg"
+    )
+    assert record.url == f"/assets/images/{record.id}.jpg"
+    assert record.thumbnail_url == f"/assets/thumbs/{record.id}.jpg"
+    assert record.image_path.read_bytes().startswith(b"\xff\xd8")
+    assert record.thumbnail_path.read_bytes().startswith(b"\xff\xd8")
+    assert warnings[-1] == "Skipped 1 image(s) during ingestion."
+
+
 def test_embed_directory_writes_viewer_contract(tmp_path: Path) -> None:
-    create_image(tmp_path / "one.jpg", (255, 0, 0))
-    create_image(tmp_path / "two.png", (0, 255, 0))
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+    create_image(tmp_path / "photos" / "two.png", (0, 255, 0))
     progress_events: list[tuple[int, int]] = []
 
     embedded = embed_directory(
-        tmp_path,
+        tmp_path / "photos",
         embedder=FakeEmbedder(),
         options=EmbedOptions(
+            asset_root=tmp_path / "assets",
             batch_size=1,
             progress=lambda completed, total: progress_events.append(
                 (completed, total)
@@ -85,44 +142,89 @@ def test_embed_directory_writes_viewer_contract(tmp_path: Path) -> None:
 
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert list(payload) == ["images"]
-    assert [image["id"] for image in payload["images"]] == [
-        "one.jpg",
-        "two.png",
-    ]
-    assert payload["images"][0]["url"] == "/images/one.jpg"
+    ids = [image["id"] for image in payload["images"]]
+    assert len(ids) == 2
+    assert all(len(image_id) == 64 for image_id in ids)
+    assert payload["images"][0]["url"].startswith("/assets/images/")
+    assert payload["images"][0]["thumbnailUrl"].startswith(
+        "/assets/thumbs/",
+    )
+    assert payload["images"][0]["width"] == 8
+    assert payload["images"][0]["height"] == 6
+    assert payload["images"][0]["metadata"]["sourcePath"].endswith(
+        ("one.jpg", "two.png"),
+    )
     assert len(payload["images"][0]["embedding"]) == 2
     assert progress_events == [(1, 2), (2, 2)]
 
     manifest_path = write_studio_manifest(
         data_path=output,
-        image_root=tmp_path,
-        url_prefix="/images/",
+        image_root=tmp_path / "assets",
+        url_prefix="/assets/",
     )
     manifest = read_studio_manifest(output)
     assert manifest_path.name == "constellation.studio.json"
-    assert manifest["imageRoot"] == str(tmp_path.resolve())
+    assert manifest["imageRoot"] == str((tmp_path / "assets").resolve())
     assert manifest["dataJson"] == str(output.resolve())
+
+
+def test_embed_directory_reuses_embedding_cache(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+    first_embedder = FakeEmbedder()
+    options = EmbedOptions(
+        asset_root=tmp_path / "assets",
+        cache_namespace="test-cache",
+    )
+
+    first = embed_directory(
+        tmp_path / "photos",
+        embedder=first_embedder,
+        options=options,
+    )
+    second_embedder = FakeEmbedder()
+    warnings: list[str] = []
+    second = embed_directory(
+        tmp_path / "photos",
+        embedder=second_embedder,
+        options=EmbedOptions(
+            asset_root=tmp_path / "assets",
+            cache_namespace="test-cache",
+            warn=warnings.append,
+        ),
+    )
+
+    assert [image.id for image in second] == [image.id for image in first]
+    assert [image.embedding for image in second] == [
+        image.embedding for image in first
+    ]
+    assert first_embedder.calls
+    assert second_embedder.calls == []
+    assert warnings == ["Reused 1 cached embedding(s)."]
+    assert EmbeddingCache(tmp_path / "assets", "test-cache").get(first[0].id)
 
 
 def test_embed_directory_can_skip_bad_images_without_misaligning_ids(
     tmp_path: Path,
 ) -> None:
-    create_image(tmp_path / "a.jpg", (255, 0, 0))
-    create_image(tmp_path / "bad.jpg", (0, 255, 0))
-    create_image(tmp_path / "c.jpg", (0, 0, 255))
+    create_image(tmp_path / "photos" / "a.jpg", (255, 0, 0))
+    create_image(tmp_path / "photos" / "bad.jpg", (0, 255, 0))
+    create_image(tmp_path / "photos" / "c.jpg", (0, 0, 255))
     warnings: list[str] = []
 
     embedded = embed_directory(
-        tmp_path,
+        tmp_path / "photos",
         embedder=FailingEmbedder(),
         options=EmbedOptions(
+            asset_root=tmp_path / "assets",
             batch_size=3,
             skip_errors=True,
             warn=warnings.append,
+            use_cache=False,
         ),
     )
 
-    assert [image.id for image in embedded] == ["a.jpg", "c.jpg"]
-    assert [image.embedding for image in embedded] == [(5.0,), (5.0,)]
-    assert any("bad.jpg" in warning for warning in warnings)
+    assert len(embedded) == 2
+    assert [len(image.id) for image in embedded] == [64, 64]
+    assert all(len(image.embedding) == 1 for image in embedded)
+    assert any("bad test image" in warning for warning in warnings)
     assert warnings[-1] == "Skipped 1 image(s) that failed to embed."

@@ -83,7 +83,7 @@ INDEX_HTML = """<!doctype html>
     const viewer = await importViewer();
     if (viewer && typeof viewer.mount === 'function') {
       status.textContent = `Mounted @constellation/viewer with ${data.images.length} images.`;
-      viewer.mount(root, data, { background: 0x050507 });
+      viewer.mount(root, data, { backgroundColor: 0x050507 });
     } else {
       status.textContent = `Viewer package not found; showing Studio fallback grid for ${data.images.length} images.`;
       root.className = 'fallback';

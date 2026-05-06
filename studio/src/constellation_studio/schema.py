@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 
 class ImageJson(TypedDict):
@@ -15,6 +15,10 @@ class ImageJson(TypedDict):
     id: str
     url: str
     embedding: list[float]
+    thumbnailUrl: NotRequired[str]
+    width: NotRequired[int]
+    height: NotRequired[int]
+    metadata: NotRequired[dict[str, str]]
 
 
 class ConstellationJson(TypedDict):
@@ -33,19 +37,32 @@ class StudioManifestJson(TypedDict):
 
 @dataclass(frozen=True, slots=True)
 class EmbeddedImage:
-    """A generated embedding for one image."""
+    """A generated embedding for one sanitized image."""
 
     id: str
     url: str
     embedding: tuple[float, ...]
+    thumbnail_url: str | None = None
+    width: int | None = None
+    height: int | None = None
+    metadata: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> ImageJson:
         """Return a JSON-serializable representation."""
-        return {
+        payload: ImageJson = {
             "id": self.id,
             "url": self.url,
             "embedding": list(self.embedding),
         }
+        if self.thumbnail_url is not None:
+            payload["thumbnailUrl"] = self.thumbnail_url
+        if self.width is not None:
+            payload["width"] = self.width
+        if self.height is not None:
+            payload["height"] = self.height
+        if self.metadata:
+            payload["metadata"] = dict(self.metadata)
+        return payload
 
 
 def constellation_json(images: list[EmbeddedImage]) -> ConstellationJson:
@@ -132,28 +149,100 @@ def read_constellation_json(path: Path) -> ConstellationJson:
         raise ValueError(msg)
 
     image_objects = cast("list[object]", images_obj)
-    images: list[ImageJson] = []
-    for image_obj in image_objects:
-        if not isinstance(image_obj, Mapping):
-            msg = f"invalid image record in: {path}"
-            raise ValueError(msg)
-        image_mapping = cast("Mapping[str, object]", image_obj)
-        id_obj = image_mapping.get("id")
-        url_obj = image_mapping.get("url")
-        embedding_obj = image_mapping.get("embedding")
-        if not isinstance(id_obj, str) or not isinstance(url_obj, str):
-            msg = f"invalid image id/url in: {path}"
-            raise ValueError(msg)
-        if not isinstance(embedding_obj, list):
-            msg = f"invalid embedding in: {path}"
-            raise ValueError(msg)
-        embedding_values = cast("list[object]", embedding_obj)
-        embedding: list[float] = []
-        for value in embedding_values:
-            if isinstance(value, bool) or not isinstance(value, int | float):
-                msg = f"invalid embedding value in: {path}"
-                raise ValueError(msg)
-            embedding.append(float(value))
-        images.append({"id": id_obj, "url": url_obj, "embedding": embedding})
+    return {
+        "images": [parse_image_json(image, path) for image in image_objects]
+    }
 
-    return {"images": images}
+
+def parse_image_json(image_obj: object, path: Path) -> ImageJson:
+    """Parse one image record from a constellation JSON file."""
+    if not isinstance(image_obj, Mapping):
+        msg = f"invalid image record in: {path}"
+        raise ValueError(msg)
+    image_mapping = cast("Mapping[str, object]", image_obj)
+    id_obj = image_mapping.get("id")
+    url_obj = image_mapping.get("url")
+    if not isinstance(id_obj, str) or not isinstance(url_obj, str):
+        msg = f"invalid image id/url in: {path}"
+        raise ValueError(msg)
+
+    image: ImageJson = {
+        "id": id_obj,
+        "url": url_obj,
+        "embedding": parse_embedding(image_mapping.get("embedding"), path),
+    }
+    apply_optional_image_fields(image_mapping, image, path)
+    return image
+
+
+def parse_embedding(embedding_obj: object, path: Path) -> list[float]:
+    """Parse and validate an embedding list."""
+    if not isinstance(embedding_obj, list):
+        msg = f"invalid embedding in: {path}"
+        raise ValueError(msg)
+    embedding: list[float] = []
+    for value in cast("list[object]", embedding_obj):
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            msg = f"invalid embedding value in: {path}"
+            raise ValueError(msg)
+        embedding.append(float(value))
+    return embedding
+
+
+def apply_optional_image_fields(
+    source: Mapping[str, object],
+    image: ImageJson,
+    path: Path,
+) -> None:
+    """Apply optional viewer fields after validation."""
+    thumbnail_url = optional_str(source, "thumbnailUrl")
+    if thumbnail_url is not None:
+        image["thumbnailUrl"] = thumbnail_url
+    width = optional_int(source, "width")
+    if width is not None:
+        image["width"] = width
+    height = optional_int(source, "height")
+    if height is not None:
+        image["height"] = height
+    metadata = optional_metadata(source.get("metadata"), path)
+    if metadata:
+        image["metadata"] = metadata
+
+
+def optional_metadata(metadata_obj: object, path: Path) -> dict[str, str]:
+    """Parse optional string metadata."""
+    if metadata_obj is None:
+        return {}
+    if not isinstance(metadata_obj, Mapping):
+        msg = f"invalid metadata in: {path}"
+        raise ValueError(msg)
+    metadata: dict[str, str] = {}
+    metadata_mapping = cast("Mapping[object, object]", metadata_obj)
+    for key, value in metadata_mapping.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            msg = f"invalid metadata in: {path}"
+            raise ValueError(msg)
+        metadata[key] = value
+    return metadata
+
+
+def optional_str(source: Mapping[str, object], key: str) -> str | None:
+    """Return an optional string field after validation."""
+    value = source.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        msg = f"invalid {key} field"
+        raise ValueError(msg)
+    return value
+
+
+def optional_int(source: Mapping[str, object], key: str) -> int | None:
+    """Return an optional integer field after validation."""
+    value = source.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        msg = f"invalid {key} field"
+        raise ValueError(msg)
+    return value
