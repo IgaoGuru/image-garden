@@ -42,6 +42,7 @@ export interface ControlsOptions {
   clickToLock?: boolean;
   moveSpeed?: number;
   sprintMultiplier?: number;
+  verticalSpeed?: number;
 }
 
 export interface SpriteOptions {

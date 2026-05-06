@@ -31,6 +31,8 @@ viewer.destroy();
 
 - Click the canvas to lock pointer.
 - WASD / arrows: fly relative to current look direction.
+- Space or E: world-up.
+- Q or C: world-down.
 - Shift: sprint.
 - Esc: unlock pointer.
 

@@ -8,6 +8,8 @@ interface KeyState {
   backward: boolean;
   left: boolean;
   right: boolean;
+  up: boolean;
+  down: boolean;
   sprint: boolean;
 }
 
@@ -28,6 +30,7 @@ export function createFlyControls(
   const clickToLock = options.clickToLock ?? true;
   const moveSpeed = options.moveSpeed ?? 45;
   const sprintMultiplier = options.sprintMultiplier ?? 3;
+  const verticalSpeed = options.verticalSpeed ?? moveSpeed;
   const pointer = new PointerLockControls(camera, domElement);
   const forwardDirection = new Vector3();
   const rightDirection = new Vector3();
@@ -38,6 +41,8 @@ export function createFlyControls(
     backward: false,
     left: false,
     right: false,
+    up: false,
+    down: false,
     sprint: false,
   };
 
@@ -58,6 +63,14 @@ export function createFlyControls(
       case 'KeyD':
       case 'ArrowRight':
         keys.right = pressed;
+        break;
+      case 'Space':
+      case 'KeyE':
+        keys.up = pressed;
+        break;
+      case 'KeyC':
+      case 'KeyQ':
+        keys.down = pressed;
         break;
       case 'ShiftLeft':
       case 'ShiftRight':
@@ -98,6 +111,8 @@ export function createFlyControls(
       if (movement.lengthSq() > 0) {
         camera.position.addScaledVector(movement.normalize(), speed);
       }
+      if (keys.up) camera.position.y += verticalSpeed * deltaSeconds;
+      if (keys.down) camera.position.y -= verticalSpeed * deltaSeconds;
     },
     lock(): void {
       if (enabled) pointer.lock();
