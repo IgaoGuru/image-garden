@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+from PIL import Image
+
+from constellation_studio.backend import run_test_backend
+from constellation_studio.index_store import IndexStore
+from constellation_studio.indexing import (
+    default_indexing_paths,
+    import_folder,
+    position_for_asset_id,
+)
+from constellation_studio.source_adapters import FolderSourceAdapter
+
+
+def create_image(path: Path, color: tuple[int, int, int]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (8, 6), color).save(path)
+
+
+def fetch_json(url: str) -> object:
+    with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310
+        return json.loads(response.read().decode("utf-8"))
+
+
+def post_json(url: str, payload: object) -> object:
+    request = urllib.request.Request(  # noqa: S310
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:  # noqa: S310
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_bytes(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310
+        return response.read()
+
+
+def test_folder_source_adapter_scans_images(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "nested" / "one.jpg", (255, 0, 0))
+
+    adapter = FolderSourceAdapter(tmp_path / "photos")
+    assets = list(adapter.scan())
+
+    assert len(assets) == 1
+    assert assets[0].source_type == "folder"
+    assert assets[0].source_asset_id == "nested/one.jpg"
+    assert assets[0].width == 8
+    assert assets[0].height == 6
+    assert assets[0].media_type == "image"
+    assert assets[0].metadata["sourcePath"]
+    assert adapter.source_id.startswith("folder:")
+
+
+def test_import_folder_persists_positioned_runtime_assets(
+    tmp_path: Path,
+) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+
+    result = import_folder(
+        tmp_path / "photos",
+        store=store,
+        asset_root=paths.asset_root,
+    )
+
+    assert result.imported == 1
+    assets = store.list_assets(limit=10, offset=0)
+    assert len(assets) == 1
+    asset = assets[0]
+    assert asset["thumbnailUrl"] == f"/api/thumbnails/{asset['id']}"
+    assert asset.get("fullUrl") == f"/api/files/{asset['id']}"
+    assert asset["position"] == position_for_asset_id(asset["id"])
+    metadata = asset.get("metadata")
+    assert metadata is not None
+    source_path = metadata.get("sourcePath")
+    assert isinstance(source_path, str)
+    assert source_path.endswith("one.jpg")
+
+    reopened = IndexStore(paths.db_path, asset_root=paths.asset_root)
+    assert reopened.get_asset(asset["id"]) == asset
+
+
+def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+    create_image(tmp_path / "photos" / "two.png", (0, 255, 0))
+
+    with run_test_backend(data_dir=tmp_path / "app-data") as base_url:
+        status = fetch_json(f"{base_url}api/status")
+        assert isinstance(status, dict)
+        assert status["totalAssets"] == 0
+
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+        assert imported["imported"] == 2
+
+        listed = fetch_json(f"{base_url}api/assets?limit=1&offset=0")
+        assert isinstance(listed, dict)
+        assert listed["total"] == 2
+        assert len(listed["assets"]) == 1
+        asset = listed["assets"][0]
+        assert asset["position"]
+        assert "embedding" not in asset
+
+        fetched = fetch_json(f"{base_url}api/assets/{asset['id']}")
+        assert fetched == asset
+
+        nearby = fetch_json(
+            f"{base_url}api/assets/near?x=0&y=0&z=0&radius=1000",
+        )
+        assert isinstance(nearby, dict)
+        assert nearby["total"] == 2
+
+        thumbnail_bytes = fetch_bytes(
+            f"{base_url}api/thumbnails/{asset['id']}"
+        )
+        file_bytes = fetch_bytes(f"{base_url}api/files/{asset['id']}")
+        assert thumbnail_bytes.startswith(b"\xff\xd8")
+        assert file_bytes.startswith(b"\xff\xd8")
+
+        try:
+            fetch_json(f"{base_url}api/assets/missing")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
+        else:  # pragma: no cover
+            raise AssertionError("missing asset unexpectedly resolved")
