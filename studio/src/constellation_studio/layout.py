@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import Any, cast
 
 Embedding = tuple[float, ...]
 Vec3 = tuple[float, float, float]
@@ -49,7 +49,7 @@ def umap_project(embeddings: Sequence[Embedding]) -> list[Vec3]:
         ]
 
     import numpy as np
-    from umap import UMAP
+    from umap import UMAP  # pyright: ignore[reportMissingTypeStubs]
 
     max_dim = max((len(embedding) for embedding in embeddings), default=0)
     if max_dim == 0:
@@ -63,12 +63,15 @@ def umap_project(embeddings: Sequence[Embedding]) -> list[Vec3]:
         )
 
     neighbors = max(2, min(15, count - 1))
-    reducer = UMAP(
-        n_components=3,
-        n_neighbors=neighbors,
-        min_dist=0.08,
-        metric="cosine",
-        random_state=42,
+    reducer = cast(
+        "Any",
+        UMAP(
+            n_components=3,
+            n_neighbors=neighbors,
+            min_dist=0.08,
+            metric="cosine",
+            random_state=42,
+        ),
     )
     projected = cast(
         "Sequence[Sequence[float]]", reducer.fit_transform(matrix)

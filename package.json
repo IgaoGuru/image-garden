@@ -6,9 +6,9 @@
   "type": "module",
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "build": "pnpm --filter @constellation/viewer build",
-    "dev": "pnpm --filter @constellation/viewer dev",
-    "typecheck": "pnpm --filter @constellation/viewer typecheck",
+    "build": "pnpm --filter @constellation/viewer build && pnpm --filter @constellation/playview build",
+    "dev": "pnpm --filter @constellation/playview dev",
+    "typecheck": "pnpm --filter @constellation/viewer typecheck && pnpm --filter @constellation/playview typecheck",
     "test": "pnpm --filter @constellation/viewer test",
     "test:e2e": "pnpm --filter @constellation/viewer test:e2e",
     "studio:sync": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --directory studio sync --inexact",
@@ -20,7 +20,10 @@
     "studio:clear": "node scripts/clear-app-data.mjs",
     "studio:test": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run pytest",
     "desktop:dev": "pnpm --filter @constellation/desktop dev",
-    "release:bundle": "bash scripts/build-release.sh"
+    "release:bundle": "bash scripts/build-release.sh",
+    "playview:dev": "pnpm --filter @constellation/playview dev",
+    "playview:build": "pnpm --filter @constellation/playview build",
+    "playview:typecheck": "pnpm --filter @constellation/playview typecheck"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

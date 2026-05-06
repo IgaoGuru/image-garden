@@ -1,0 +1,66 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; min-height: 100%; background: #000; color: #f6f1e8; overflow: hidden; }
+body { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+button, input { font: inherit; }
+button { color: #f6f1e8; background: transparent; border: 1px solid rgba(246,241,232,.25); border-radius: 0; padding: 10px 14px; cursor: pointer; transition: border-color .16s ease, background .16s ease, opacity .16s ease; }
+button:hover:not(:disabled), button:focus-visible { border-color: rgba(246,241,232,.72); background: rgba(246,241,232,.055); outline: none; }
+button:disabled { cursor: not-allowed; opacity: .42; }
+input { width: 100%; color: #f6f1e8; background: #050505; border: 1px solid rgba(246,241,232,.24); padding: 11px 12px; outline: none; }
+input:focus { border-color: rgba(246,241,232,.72); }
+
+#viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; opacity: 0; transition: opacity 1400ms ease; }
+#viewer.visible { opacity: 1; }
+#status { position: fixed; left: 18px; bottom: 16px; z-index: 5; max-width: calc(100vw - 36px); color: rgba(246,241,232,.54); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+#help-text { position: fixed; left: 50%; bottom: 52px; z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
+#help-text.visible { opacity: 1; }
+#help-text kbd { color: rgba(246,241,232,.86); font: inherit; }
+.mouse-icon { color: rgba(246,241,232,.82); }
+
+#onboarding { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; padding: 28px; background: #000; opacity: 0; transition: opacity 1200ms ease; }
+#onboarding.visible { display: flex; }
+#onboarding.fade-in { opacity: 1; }
+.onboarding-panel { width: min(520px, 100%); display: grid; gap: 24px; justify-items: center; animation: hello 1200ms ease both; }
+@keyframes hello { from { transform: translateY(8px); filter: blur(4px); } to { transform: translateY(0); filter: blur(0); } }
+.title { margin: 0; color: rgba(246,241,232,.88); font-size: clamp(15px, 2.4vw, 19px); font-weight: 400; letter-spacing: .01em; text-align: center; }
+.drop-zone { width: min(420px, 72vw); aspect-ratio: 1; display: grid; place-items: center; padding: 24px; color: rgba(246,241,232,.68); border: 1px solid rgba(246,241,232,.24); background: radial-gradient(circle at 50% 50%, rgba(246,241,232,.045), rgba(246,241,232,.015) 44%, transparent 70%); text-align: center; }
+.drop-zone:hover, .drop-zone.dragging { border-color: rgba(246,241,232,.82); background: rgba(246,241,232,.04); }
+.dataset-button { border: 0; color: rgba(246,241,232,.52); padding: 4px; font-size: 12px; }
+.dataset-button:hover, .dataset-button:focus-visible { color: rgba(246,241,232,.9); background: transparent; }
+.manual-form { display: none; width: min(420px, 72vw); grid-template-columns: 1fr auto; gap: 8px; }
+.manual-form.visible { display: grid; }
+.manual-form[data-manual-form="studio"] { margin-top: -12px; }
+
+#progress { position: fixed; inset: 0; z-index: 12; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.94); opacity: 0; transition: opacity 240ms ease; }
+#progress.visible { display: flex; opacity: 1; }
+.progress-panel { width: min(520px, calc(100vw - 48px)); display: grid; gap: 18px; }
+.progress-line { display: flex; justify-content: space-between; gap: 16px; color: rgba(246,241,232,.72); font-size: 12px; }
+.bar { height: 1px; background: rgba(246,241,232,.18); overflow: hidden; }
+.bar-fill { width: 0%; height: 100%; background: rgba(246,241,232,.86); transition: width 260ms ease; }
+.starfield { position: relative; height: 170px; border: 1px solid rgba(246,241,232,.12); background: radial-gradient(circle at 50% 50%, rgba(246,241,232,.035), transparent 72%); overflow: hidden; }
+.star { position: absolute; width: 2px; height: 2px; border-radius: 999px; background: rgba(246,241,232,.84); opacity: .2; transform: scale(.4); animation: starBirth 720ms ease forwards; }
+@keyframes starBirth { to { opacity: .9; transform: scale(1); } }
+.progress-log { display: grid; gap: 3px; min-height: 66px; overflow: hidden; color: rgba(246,241,232,.36); font-size: 11px; }
+.progress-log-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .3s ease; }
+.progress-log-line:nth-child(1) { color: rgba(246,241,232,.78); opacity: 1; }
+.progress-log-line:nth-child(2) { opacity: .62; }
+.progress-log-line:nth-child(3) { opacity: .38; }
+.progress-log-line:nth-child(4) { opacity: .18; }
+
+#menu { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.74); opacity: 0; transition: opacity 140ms ease; }
+#menu.visible { display: flex; opacity: 1; }
+.menu-panel { width: min(360px, calc(100vw - 42px)); display: grid; gap: 8px; padding: 18px; border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); }
+.menu-panel button { width: 100%; text-align: left; border-color: transparent; color: rgba(246,241,232,.72); }
+.menu-panel button:hover, .menu-panel button:focus-visible { color: #f6f1e8; border-color: rgba(246,241,232,.26); }
+.debug { display: none; max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid rgba(246,241,232,.12); color: rgba(246,241,232,.62); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.debug.visible { display: block; }
+.fallback { padding: 20px; overflow: auto; opacity: 1 !important; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.card { background: #080808; border: 1px solid #333; overflow: hidden; }
+.card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #000; }
+.card div { padding: 8px; font-size: 12px; color: #bbb; overflow-wrap: anywhere; }
+@media (max-width: 620px) { .manual-form { grid-template-columns: 1fr; } }

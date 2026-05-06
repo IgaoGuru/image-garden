@@ -62,11 +62,12 @@ printf 'Preparing local Python environment…\n'
 uv --directory studio sync --inexact --extra onnx
 
 if [ -f package.json ] && need_cmd pnpm; then
-  printf 'Building viewer assets…\n'
+  printf 'Building web assets…\n'
   pnpm install --frozen-lockfile
   pnpm --filter @constellation/viewer build
+  pnpm --filter @constellation/playview build
 else
-  printf 'Viewer build skipped; using bundled viewer-dist if present.\n'
+  printf 'Web build skipped; using bundled dist assets if present.\n'
 fi
 
 printf '\nStarting Constellation…\n'

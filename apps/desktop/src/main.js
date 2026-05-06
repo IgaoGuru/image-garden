@@ -14,6 +14,10 @@ function viewerDistPath() {
   return process.env.CONSTELLATION_VIEWER_DIST ?? path.join(repoRoot, 'packages', 'viewer', 'dist');
 }
 
+function playviewDistPath() {
+  return process.env.CONSTELLATION_PLAYVIEW_DIST ?? path.join(repoRoot, 'playview', 'dist');
+}
+
 function backendCommand() {
   if (process.env.CONSTELLATION_BACKEND_COMMAND) {
     return {
@@ -37,6 +41,8 @@ function backendCommand() {
       path.join(app.getPath('userData'), 'backend'),
       '--viewer-dist',
       viewerDistPath(),
+      '--playview-dist',
+      playviewDistPath(),
     ],
     shell: false,
   };

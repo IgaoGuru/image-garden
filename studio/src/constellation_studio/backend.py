@@ -39,630 +39,12 @@ DEFAULT_PORT = 8766
 DEFAULT_LIMIT = 500
 MAX_LIMIT = 5000
 
-BACKEND_INDEX_HTML = """<!doctype html>
+PLAYVIEW_MISSING_HTML = """<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Constellation</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; min-height: 100%; background: #000; color: #f6f1e8; overflow: hidden; }
-    body { font: 14px/1.4 ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
-    button, input { font: inherit; }
-    button { color: #f6f1e8; background: transparent; border: 1px solid rgba(246,241,232,.25); border-radius: 0; padding: 10px 14px; cursor: pointer; transition: border-color .16s ease, background .16s ease, opacity .16s ease; }
-    button:hover:not(:disabled), button:focus-visible { border-color: rgba(246,241,232,.72); background: rgba(246,241,232,.055); outline: none; }
-    button:disabled { cursor: not-allowed; opacity: .42; }
-    input { width: 100%; color: #f6f1e8; background: #050505; border: 1px solid rgba(246,241,232,.24); padding: 11px 12px; outline: none; }
-    input:focus { border-color: rgba(246,241,232,.72); }
-    #viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; opacity: 0; transition: opacity 1400ms ease; }
-    #viewer.visible { opacity: 1; }
-    #status { position: fixed; left: 18px; bottom: 16px; z-index: 5; max-width: calc(100vw - 36px); color: rgba(246,241,232,.54); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-    #help-text { position: fixed; left: 50%; bottom: 52px; z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
-    #help-text.visible { opacity: 1; }
-    #help-text kbd { color: rgba(246,241,232,.86); font: inherit; }
-    .mouse-icon { color: rgba(246,241,232,.82); }
-    #onboarding { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; padding: 28px; background: #000; opacity: 0; transition: opacity 1200ms ease; }
-    #onboarding.visible { display: flex; }
-    #onboarding.fade-in { opacity: 1; }
-    .onboarding-panel { width: min(520px, 100%); display: grid; gap: 24px; justify-items: center; animation: hello 1200ms ease both; }
-    @keyframes hello { from { transform: translateY(8px); filter: blur(4px); } to { transform: translateY(0); filter: blur(0); } }
-    .title { margin: 0; color: rgba(246,241,232,.88); font-size: clamp(15px, 2.4vw, 19px); font-weight: 400; letter-spacing: .01em; text-align: center; }
-    .drop-zone { width: min(420px, 72vw); aspect-ratio: 1; display: grid; place-items: center; padding: 24px; color: rgba(246,241,232,.68); border: 1px solid rgba(246,241,232,.24); background: radial-gradient(circle at 50% 50%, rgba(246,241,232,.045), rgba(246,241,232,.015) 44%, transparent 70%); text-align: center; }
-    .drop-zone:hover, .drop-zone.dragging { border-color: rgba(246,241,232,.82); background: rgba(246,241,232,.04); }
-    .dataset-button { border: 0; color: rgba(246,241,232,.52); padding: 4px; font-size: 12px; }
-    .dataset-button:hover, .dataset-button:focus-visible { color: rgba(246,241,232,.9); background: transparent; }
-    .manual-form { display: none; width: min(420px, 72vw); grid-template-columns: 1fr auto; gap: 8px; }
-    .manual-form.visible { display: grid; }
-    .manual-form[data-manual-form="studio"] { margin-top: -12px; }
-    #progress { position: fixed; inset: 0; z-index: 12; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.94); opacity: 0; transition: opacity 240ms ease; }
-    #progress.visible { display: flex; opacity: 1; }
-    .progress-panel { width: min(520px, calc(100vw - 48px)); display: grid; gap: 18px; }
-    .progress-line { display: flex; justify-content: space-between; gap: 16px; color: rgba(246,241,232,.72); font-size: 12px; }
-    .bar { height: 1px; background: rgba(246,241,232,.18); overflow: hidden; }
-    .bar-fill { width: 0%; height: 100%; background: rgba(246,241,232,.86); transition: width 260ms ease; }
-    .starfield { position: relative; height: 170px; border: 1px solid rgba(246,241,232,.12); background: radial-gradient(circle at 50% 50%, rgba(246,241,232,.035), transparent 72%); overflow: hidden; }
-    .star { position: absolute; width: 2px; height: 2px; border-radius: 999px; background: rgba(246,241,232,.84); opacity: .2; transform: scale(.4); animation: starBirth 720ms ease forwards; }
-    @keyframes starBirth { to { opacity: .9; transform: scale(1); } }
-    .progress-log { display: grid; gap: 3px; min-height: 66px; overflow: hidden; color: rgba(246,241,232,.36); font-size: 11px; }
-    .progress-log-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity .3s ease; }
-    .progress-log-line:nth-child(1) { color: rgba(246,241,232,.78); opacity: 1; }
-    .progress-log-line:nth-child(2) { opacity: .62; }
-    .progress-log-line:nth-child(3) { opacity: .38; }
-    .progress-log-line:nth-child(4) { opacity: .18; }
-    #menu { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.74); opacity: 0; transition: opacity 140ms ease; }
-    #menu.visible { display: flex; opacity: 1; }
-    .menu-panel { width: min(360px, calc(100vw - 42px)); display: grid; gap: 8px; padding: 18px; border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); }
-    .menu-panel button { width: 100%; text-align: left; border-color: transparent; color: rgba(246,241,232,.72); }
-    .menu-panel button:hover, .menu-panel button:focus-visible { color: #f6f1e8; border-color: rgba(246,241,232,.26); }
-    .debug { display: none; max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid rgba(246,241,232,.12); color: rgba(246,241,232,.62); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .debug.visible { display: block; }
-    .fallback { padding: 20px; overflow: auto; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
-    .card { background: #080808; border: 1px solid #333; overflow: hidden; }
-    .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #000; }
-    .card div { padding: 8px; font-size: 12px; color: #bbb; overflow-wrap: anywhere; }
-    @media (max-width: 620px) { .manual-form { grid-template-columns: 1fr; } }
-  </style>
-</head>
-<body>
-  <main id="viewer"></main>
-  <div id="status" aria-live="polite">loading</div>
-  <div id="help-text"></div>
-  <section id="onboarding" aria-live="polite"></section>
-  <section id="progress" aria-live="polite">
-    <div class="progress-panel">
-      <div class="progress-line"><span id="progress-phase">embedding images</span><span id="progress-count">0 / 0</span></div>
-      <div class="bar"><div id="progress-fill" class="bar-fill"></div></div>
-      <div id="starfield" class="starfield" aria-hidden="true"></div>
-      <div id="progress-log" class="progress-log" aria-live="polite"></div>
-    </div>
-  </section>
-  <section id="menu" aria-hidden="true">
-    <div class="menu-panel" role="dialog" aria-label="menu">
-      <button type="button" data-menu="reset-camera">reset camera</button>
-      <button type="button" data-menu="fit-constellation">fit constellation</button>
-      <button type="button" data-menu="reimport">reimport last folder</button>
-      <button type="button" data-menu="open-data">open data folder</button>
-      <button type="button" data-menu="clear-data">clear data</button>
-      <button type="button" data-menu="debug">debug status</button>
-      <button type="button" data-menu="close">close</button>
-      <pre id="debug" class="debug"></pre>
-    </div>
-  </section>
-  <script type="module">
-    const status = document.querySelector('#status');
-    const helpText = document.querySelector('#help-text');
-    const root = document.querySelector('#viewer');
-    const onboarding = document.querySelector('#onboarding');
-    const progress = document.querySelector('#progress');
-    const progressPhase = document.querySelector('#progress-phase');
-    const progressCount = document.querySelector('#progress-count');
-    const progressFill = document.querySelector('#progress-fill');
-    const starfield = document.querySelector('#starfield');
-    const progressLog = document.querySelector('#progress-log');
-    const menu = document.querySelector('#menu');
-    const debug = document.querySelector('#debug');
-    const desktop = window.constellationDesktop;
-    let viewerInstance = null;
-    let latestStatus = null;
-    let starCount = 0;
-    let targetStarCount = 0;
-    let lastProgressLogKey = '';
-    let visibleProgress = 0;
-    let helpTimer = 0;
-    let idleTimer = 0;
-    let spinnerFrame = 0;
-    let wasPointerLocked = false;
-    let tutorialActive = false;
-    let tutorialTransitioning = false;
-    let tutorialIndex = 0;
-    const verticalTutorialKeys = new Set();
-    const tutorialSteps = [
-      { id: 'move', text: 'use <kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> to move around' },
-      { id: 'look', text: 'move your <span class="mouse-icon">🖱</span> mouse to move your view' },
-      { id: 'vertical', text: 'use <kbd>space</kbd> and <kbd>C</kbd> to go up and down' },
-      { id: 'slow', text: 'use <kbd>shift</kbd> to go slower' },
-      { id: 'menu', text: 'press <kbd>esc</kbd> to see the menu' },
-    ];
-    const spinnerFrames = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠'];
-    const progressLogEntries = [];
-    window.setInterval(() => {
-      if (!progress.classList.contains('visible') || progressLogEntries.length === 0) return;
-      spinnerFrame = (spinnerFrame + 1) % spinnerFrames.length;
-      renderProgressLog();
-    }, 140);
-
-    const [payload, sourcesPayload, initialStatus] = await Promise.all([
-      fetch('/api/assets?limit=5000').then((response) => {
-        if (!response.ok) throw new Error(`assets HTTP ${response.status}`);
-        return response.json();
-      }),
-      fetch('/api/sources').then((response) => response.ok ? response.json() : { sources: [] }),
-      fetch('/api/status').then((response) => response.ok ? response.json() : null),
-    ]);
-    const assets = payload.assets ?? [];
-    const sources = sourcesPayload.sources ?? [];
-    latestStatus = initialStatus;
-    const data = { images: assets.map((asset) => ({ ...asset, url: asset.fullUrl ?? asset.thumbnailUrl })) };
-
-    async function importViewer() {
-      const candidates = [
-        '/viewer-entry.js',
-        '/viewer/constellation-viewer.js',
-        '/viewer/constellation-viewer.es.js',
-        '/viewer/constellation-viewer.mjs',
-        '/viewer/viewer.js',
-        '/viewer/viewer.mjs',
-        '/viewer/index.js',
-        '/viewer/index.mjs',
-      ];
-      for (const url of candidates) {
-        try { return await import(url); } catch (_) {}
-      }
-      return null;
-    }
-
-    const viewer = await importViewer();
-    if (viewer && typeof viewer.mount === 'function') {
-      status.textContent = assets.length ? `${assets.length} images` : '';
-      viewerInstance = viewer.mount(root, data, { backgroundColor: 0x000000, sprites: { renderMode: 'auto' } });
-      requestAnimationFrame(() => root.classList.add('visible'));
-    } else {
-      status.textContent = 'viewer bundle missing';
-      root.className = 'fallback';
-      root.innerHTML = '<p>viewer bundle missing</p><div class="grid"></div>';
-      renderFallbackGrid(assets);
-    }
-
-    if (assets.length === 0) showOnboarding();
-    else startTutorial();
-    scheduleIdleHelp();
-    ['pointerdown', 'wheel', 'keydown'].forEach((type) => {
-      window.addEventListener(type, noteActivity, { passive: true });
-    });
-    window.addEventListener('pointermove', (event) => {
-      handleTutorialPointerMove(event);
-      noteActivity();
-    }, { passive: true });
-
-    document.addEventListener('keydown', (event) => {
-      handleTutorialKey(event);
-      if (event.key !== 'Escape') return;
-      if (onboarding.classList.contains('visible') || progress.classList.contains('visible')) return;
-      event.preventDefault();
-      toggleMenu();
-      if (!tutorialActive) showHelp('wasd move · spacebar up · c down · esc go back', 6000);
-    });
-
-    document.addEventListener('pointerlockchange', () => {
-      const canvas = root.querySelector('canvas');
-      const isPointerLocked = document.pointerLockElement === canvas;
-      if (wasPointerLocked && !isPointerLocked && isPlayviewVisible() && !menu.classList.contains('visible')) {
-        completeTutorialStep('menu');
-        showMenu();
-        if (!tutorialActive) showHelp('wasd move · spacebar up · c down · esc go back', 6000);
-      }
-      wasPointerLocked = isPointerLocked;
-    });
-
-    menu.addEventListener('click', async (event) => {
-      const button = event.target.closest('button[data-menu]');
-      if (!button) return;
-      const action = button.dataset.menu;
-      if (action === 'close') hideMenu();
-      if (action === 'reset-camera') { viewerInstance?.resetCamera?.(); hideMenu(); }
-      if (action === 'fit-constellation') { viewerInstance?.fitToContent?.(); hideMenu(); startTutorial(); }
-      if (action === 'reimport') await reimportLastFolder();
-      if (action === 'open-data') await postJson('/api/system/open-data-dir', {});
-      if (action === 'clear-data') await clearData();
-      if (action === 'debug') await showDebug();
-    });
-
-    function showOnboarding() {
-      onboarding.innerHTML = onboardingMarkup();
-      onboarding.classList.add('visible');
-      requestAnimationFrame(() => onboarding.classList.add('fade-in'));
-      const dropZone = onboarding.querySelector('.drop-zone');
-      dropZone?.addEventListener('click', chooseFolder);
-      dropZone?.addEventListener('dragenter', (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
-      dropZone?.addEventListener('dragover', (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
-      dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
-      dropZone?.addEventListener('drop', handleDrop);
-      onboarding.querySelector('[data-action="choose-studio"]')?.addEventListener('click', chooseStudioDataset);
-      onboarding.querySelector('[data-manual-form="folder"]')?.addEventListener('submit', submitManualFolder);
-      onboarding.querySelector('[data-manual-form="studio"]')?.addEventListener('submit', submitManualStudio);
-    }
-
-    function onboardingMarkup() {
-      return `<div class="onboarding-panel">
-        <h1 class="title">build your constellation of images</h1>
-        <button class="drop-zone" type="button" data-action="choose-folder">drop your photos directory here</button>
-        <form class="manual-form" data-manual-form="folder">
-          <input name="path" placeholder="/absolute/path/to/photos" autocomplete="off">
-          <button type="submit">import</button>
-        </form>
-        <button class="dataset-button" type="button" data-action="choose-studio">already have a image-embedding dataset?</button>
-        <form class="manual-form" data-manual-form="studio">
-          <input name="path" placeholder="/path/to/constellation.json" autocomplete="off">
-          <button type="submit">open</button>
-        </form>
-      </div>`;
-    }
-
-    async function handleDrop(event) {
-      event.preventDefault();
-      event.currentTarget.classList.remove('dragging');
-      const path = [...(event.dataTransfer?.files ?? [])].map((file) => file.path).find(Boolean);
-      if (path) {
-        await startFolderImport(path);
-        return;
-      }
-      status.textContent = 'directory path unavailable; opening picker';
-      await chooseFolder();
-    }
-
-    async function chooseFolder() {
-      if (desktop?.openImportFolder) {
-        await runDesktopImport(() => desktop.openImportFolder(), 'importing directory');
-        return;
-      }
-      const path = await chooseBackendPath('/api/dialog/folder', 'choose a directory');
-      if (path) {
-        await startFolderImport(path);
-        return;
-      }
-      onboarding.querySelector('[data-manual-form="folder"]')?.classList.add('visible');
-      onboarding.querySelector('[data-manual-form="folder"] input')?.focus();
-    }
-
-    async function chooseStudioDataset() {
-      if (desktop?.openImportStudio) {
-        await runDesktopImport(() => desktop.openImportStudio(), 'importing dataset');
-        return;
-      }
-      const path = await chooseBackendPath('/api/dialog/studio', 'choose a dataset');
-      if (path) {
-        await submitImportPath('/api/import/studio', path, 'opening dataset');
-        return;
-      }
-      onboarding.querySelector('[data-manual-form="studio"]')?.classList.add('visible');
-      onboarding.querySelector('[data-manual-form="studio"] input')?.focus();
-    }
-
-    async function chooseBackendPath(endpoint, message) {
-      status.textContent = message;
-      try {
-        const response = await postJson(endpoint, {});
-        if (response.ok && typeof response.path === 'string') return response.path;
-        status.textContent = 'no path selected';
-        return null;
-      } catch (error) {
-        status.textContent = `picker failed: ${error instanceof Error ? error.message : String(error)}`;
-        return null;
-      }
-    }
-
-    async function runDesktopImport(importer, message) {
-      showProgress({ jobPhase: message, jobCompleted: 0, jobTotal: 0 });
-      try {
-        const result = await importer();
-        if (result?.ok) window.location.reload();
-        else if (!result?.canceled) status.textContent = result?.error ?? 'import canceled';
-      } catch (error) {
-        status.textContent = `import failed: ${error instanceof Error ? error.message : String(error)}`;
-      } finally {
-        hideProgress();
-      }
-    }
-
-    async function submitManualFolder(event) {
-      event.preventDefault();
-      const path = new FormData(event.currentTarget).get('path');
-      if (typeof path !== 'string' || !path.trim()) return;
-      await startFolderImport(path);
-    }
-
-    async function submitManualStudio(event) {
-      event.preventDefault();
-      const path = new FormData(event.currentTarget).get('path');
-      if (typeof path !== 'string' || !path.trim()) return;
-      await submitImportPath('/api/import/studio', path, 'opening dataset');
-    }
-
-    async function startFolderImport(path) {
-      showProgress({ jobPhase: 'queued', jobCompleted: 0, jobTotal: 0 });
-      const response = await fetch('/api/import/folder', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path, background: true }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.ok) {
-        hideProgress();
-        status.textContent = `error — ${result.error ?? response.statusText}`;
-        return;
-      }
-      onboarding.classList.remove('fade-in');
-      onboarding.classList.remove('visible');
-      await pollImportProgress();
-    }
-
-    async function submitImportPath(endpoint, path, label) {
-      status.textContent = label;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.ok) {
-        status.textContent = `error — ${result.error ?? response.statusText}`;
-        return;
-      }
-      window.location.reload();
-    }
-
-    async function pollImportProgress() {
-      while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const current = await fetch('/api/status').then((response) => response.json());
-        latestStatus = current;
-        showProgress(current);
-        if (current.state === 'error' || current.jobPhase === 'error') {
-          hideProgress();
-          status.textContent = `error — ${current.jobMessage ?? 'import failed'}`;
-          return;
-        }
-        if ((current.jobPhase === 'ready' || current.state === 'idle') && current.totalAssets > 0) {
-          window.location.reload();
-          return;
-        }
-      }
-    }
-
-    function showProgress(current) {
-      const serverCompleted = current.jobCompleted ?? 0;
-      const total = current.jobTotal ?? 0;
-      const phase = current.jobPhase ?? current.state ?? 'working';
-      visibleProgress = nextVisibleProgress(visibleProgress, serverCompleted, total, phase);
-      const displayCompleted = total > 0 ? Math.min(total, Math.floor(visibleProgress)) : serverCompleted;
-      const percent = total > 0 ? Math.min(100, Math.round((visibleProgress / total) * 100)) : 3;
-      progress.classList.add('visible');
-      progressPhase.textContent = phase;
-      progressCount.textContent = total > 0 ? `${displayCompleted} / ${total}` : '';
-      progressFill.style.width = `${percent}%`;
-      status.textContent = total > 0 ? `${phase} ${displayCompleted}/${total}` : phase;
-      targetStarCount = total > 0 ? Math.min(160, Math.max(8, Math.ceil((visibleProgress / Math.max(total, 1)) * 160))) : 12;
-      drainStarQueue();
-      maybeLogProgress(phase, displayCompleted, total, current.jobMessage ?? '');
-    }
-
-    function nextVisibleProgress(current, serverCompleted, total, phase) {
-      if (total <= 0) return Math.max(current, serverCompleted);
-      if (serverCompleted >= total || phase === 'ready' || phase === 'layout') return serverCompleted;
-      const floor = Math.max(current, serverCompleted);
-      const trickleCap = Math.min(total - 1, serverCompleted + Math.max(1, total * 0.08));
-      return Math.min(trickleCap, floor + Math.max(0.18, total * 0.004));
-    }
-
-    function maybeLogProgress(phase, completed, total, message) {
-      const key = `${phase}:${completed}:${total}:${message}`;
-      if (key === lastProgressLogKey) return;
-      lastProgressLogKey = key;
-      const count = total > 0 ? ` ${completed}/${total}` : '';
-      const suffix = message ? ` — ${message}` : '';
-      progressLogEntries.unshift(`${phase}${count}${suffix}`);
-      progressLogEntries.length = Math.min(progressLogEntries.length, 8);
-      renderProgressLog();
-    }
-
-    function renderProgressLog() {
-      progressLog.replaceChildren(...progressLogEntries.slice(0, 4).map((entry, index) => {
-        const line = document.createElement('div');
-        line.className = 'progress-log-line';
-        line.textContent = index === 0 ? `${spinnerFrames[spinnerFrame]} ${entry}` : `  ${entry}`;
-        return line;
-      }));
-    }
-
-    function hideProgress() {
-      progress.classList.remove('visible');
-      targetStarCount = 0;
-    }
-
-    function drainStarQueue() {
-      if (!progress.classList.contains('visible')) return;
-      if (starCount < targetStarCount) addStar();
-      if (starCount < targetStarCount) window.setTimeout(drainStarQueue, 38);
-    }
-
-    function addStar() {
-      starCount += 1;
-      const star = document.createElement('span');
-      star.className = 'star';
-      const angle = (starCount * 137.508) * Math.PI / 180;
-      const radius = Math.sqrt(starCount / 160) * 44;
-      const jitterX = (Math.random() - .5) * 10;
-      const jitterY = (Math.random() - .5) * 10;
-      star.style.left = `${50 + Math.cos(angle) * radius + jitterX}%`;
-      star.style.top = `${50 + Math.sin(angle) * radius + jitterY}%`;
-      starfield.append(star);
-    }
-
-    function isPlayviewVisible() {
-      return assets.length > 0
-        && !onboarding.classList.contains('visible')
-        && !progress.classList.contains('visible');
-    }
-
-    function startTutorial() {
-      if (!isPlayviewVisible()) return;
-      tutorialActive = true;
-      tutorialTransitioning = false;
-      tutorialIndex = 0;
-      verticalTutorialKeys.clear();
-      showTutorialStep();
-    }
-
-    function showTutorialStep() {
-      if (!tutorialActive || !isPlayviewVisible()) return;
-      const step = tutorialSteps[tutorialIndex];
-      if (!step) {
-        tutorialActive = false;
-        hideHelp();
-        return;
-      }
-      helpText.innerHTML = step.text;
-      helpText.classList.add('visible');
-      window.clearTimeout(helpTimer);
-    }
-
-    function completeTutorialStep(stepId) {
-      const step = tutorialSteps[tutorialIndex];
-      if (!tutorialActive || tutorialTransitioning || step?.id !== stepId) return;
-      tutorialTransitioning = true;
-      window.clearTimeout(helpTimer);
-      helpTimer = window.setTimeout(() => {
-        helpText.classList.remove('visible');
-        helpTimer = window.setTimeout(() => {
-          tutorialIndex += 1;
-          tutorialTransitioning = false;
-          if (tutorialIndex >= tutorialSteps.length) {
-            tutorialActive = false;
-            hideHelp();
-            return;
-          }
-          showTutorialStep();
-        }, 1500);
-      }, 1500);
-    }
-
-    function handleTutorialKey(event) {
-      if (!tutorialActive || tutorialTransitioning) return;
-      const step = tutorialSteps[tutorialIndex];
-      if (step?.id === 'move' && ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code)) {
-        completeTutorialStep('move');
-      }
-      if (step?.id === 'vertical' && ['Space', 'KeyC'].includes(event.code)) {
-        verticalTutorialKeys.add(event.code);
-        if (verticalTutorialKeys.has('Space') && verticalTutorialKeys.has('KeyC')) {
-          completeTutorialStep('vertical');
-        }
-      }
-      if (step?.id === 'slow' && ['ShiftLeft', 'ShiftRight'].includes(event.code)) {
-        completeTutorialStep('slow');
-      }
-      if (step?.id === 'menu' && event.key === 'Escape') {
-        completeTutorialStep('menu');
-      }
-    }
-
-    function handleTutorialPointerMove(event) {
-      const moved = Math.abs(event.movementX ?? 0) + Math.abs(event.movementY ?? 0) > 0;
-      if (tutorialActive && !tutorialTransitioning && tutorialSteps[tutorialIndex]?.id === 'look' && moved) {
-        completeTutorialStep('look');
-      }
-    }
-
-    function showHelp(message, duration = 4200) {
-      if (!isPlayviewVisible() || tutorialActive) return;
-      helpText.textContent = message;
-      helpText.classList.add('visible');
-      window.clearTimeout(helpTimer);
-      helpTimer = window.setTimeout(() => helpText.classList.remove('visible'), duration);
-    }
-
-    function hideHelp() {
-      if (menu.classList.contains('visible') || tutorialActive) return;
-      helpText.classList.remove('visible');
-      window.clearTimeout(helpTimer);
-    }
-
-    function scheduleIdleHelp() {
-      window.clearTimeout(idleTimer);
-      idleTimer = window.setTimeout(() => showHelp('wasd move · spacebar up · c down · esc go back', 6000), 5000);
-    }
-
-    function noteActivity() {
-      if (!tutorialActive) hideHelp();
-      scheduleIdleHelp();
-    }
-
-    function toggleMenu() {
-      if (menu.classList.contains('visible')) hideMenu();
-      else showMenu();
-    }
-
-    function showMenu() {
-      menu.classList.add('visible');
-      menu.setAttribute('aria-hidden', 'false');
-      menu.querySelector('button')?.focus();
-    }
-
-    function hideMenu() {
-      menu.classList.remove('visible');
-      menu.setAttribute('aria-hidden', 'true');
-      debug.classList.remove('visible');
-      root.querySelector('canvas')?.focus();
-    }
-
-    async function clearData() {
-      if (!confirm('clear all local constellation data?')) return;
-      await postJson('/api/data/clear', {});
-      window.location.reload();
-    }
-
-    async function reimportLastFolder() {
-      const current = latestStatus ?? await fetch('/api/status').then((response) => response.json());
-      const path = current.lastImportPath;
-      if (!path) {
-        status.textContent = 'no last folder';
-        return;
-      }
-      hideMenu();
-      await startFolderImport(path);
-    }
-
-    async function showDebug() {
-      const current = await fetch('/api/status').then((response) => response.json());
-      latestStatus = current;
-      debug.textContent = JSON.stringify(current, null, 2);
-      debug.classList.toggle('visible');
-    }
-
-    async function postJson(url, payload) {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok || result.ok === false) throw new Error(result.error ?? response.statusText);
-      return result;
-    }
-
-    function renderFallbackGrid(assets) {
-      const grid = root.querySelector('.grid');
-      if (!grid) return;
-      for (const asset of assets) {
-        const card = document.createElement('article');
-        card.className = 'card';
-        const img = document.createElement('img');
-        img.loading = 'lazy';
-        img.src = asset.thumbnailUrl;
-        img.alt = asset.id;
-        const caption = document.createElement('div');
-        caption.textContent = asset.metadata?.sourcePath ?? asset.id;
-        card.append(img, caption);
-        grid.append(card);
-      }
-    }
-  </script>
+<head><meta charset="utf-8"><title>Constellation</title></head>
+<body style="background:#000;color:#f6f1e8;font-family:monospace;padding:24px">
+  <h1>Constellation</h1>
+  <p>Playview build missing. Run <code>pnpm --filter @constellation/playview build</code>.</p>
 </body>
 </html>
 """
@@ -676,6 +58,7 @@ class BackendConfig:
     port: int
     data_dir: Path
     viewer_dist: Path | None = None
+    playview_dist: Path | None = None
     embedding_engine: str = "none"
     embedding_model: str = DEFAULT_MODEL
     embedding_pretrained: str = DEFAULT_PRETRAINED
@@ -697,6 +80,7 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
     store: ClassVar[IndexStore]
     asset_root: ClassVar[Path]
     viewer_dist: ClassVar[Path | None]
+    playview_dist: ClassVar[Path | None]
     embedding_provider: ClassVar[EmbeddingProvider | None]
     embedding_batch_size: ClassVar[int]
     import_lock: ClassVar[threading.Lock]
@@ -772,11 +156,14 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         route = split.path
         query = parse_qs(split.query)
         if route in {"/", "/index.html"}:
-            self._send_bytes(
-                BACKEND_INDEX_HTML.encode("utf-8"),
-                "text/html; charset=utf-8",
-                send_body=send_body,
+            self._send_playview_index(send_body=send_body)
+            return
+        if route.startswith("/assets/") and self.playview_dist is not None:
+            path = resolve_below(
+                self.playview_dist,
+                route.removeprefix("/"),
             )
+            self._send_path_or_404(path, send_body=send_body)
             return
         if route == "/api/status":
             self._send_json(self.store.status(), send_body=send_body)
@@ -1022,6 +409,19 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         )
         self._send_path_or_404(path, send_body=send_body)
 
+    def _send_playview_index(self, *, send_body: bool) -> None:
+        if self.playview_dist is None:
+            self._send_bytes(
+                PLAYVIEW_MISSING_HTML.encode("utf-8"),
+                "text/html; charset=utf-8",
+                send_body=send_body,
+            )
+            return
+        self._send_path_or_404(
+            self.playview_dist / "index.html",
+            send_body=send_body,
+        )
+
     def _send_viewer_entry(self, *, send_body: bool) -> None:
         if self.viewer_dist is None:
             self.send_error(HTTPStatus.NOT_FOUND, "viewer dist not configured")
@@ -1256,7 +656,7 @@ def run_tk_file_dialog() -> Path | None:
 
 
 def source_capabilities() -> dict[str, object]:
-    """Return BYO source types surfaced by the onboarding UI."""
+    """Return BYO source types surfaced by Playview."""
     return {
         "sources": [
             {
@@ -1305,6 +705,16 @@ def find_default_viewer_dist(start: Path) -> Path | None:
     return None
 
 
+def find_default_playview_dist(start: Path) -> Path | None:
+    """Find bundled or repo-built Playview dist."""
+    for base in [start, *start.parents]:
+        for relative in (Path("playview-dist"), Path("playview") / "dist"):
+            candidate = base / relative
+            if candidate.is_dir():
+                return candidate
+    return None
+
+
 def find_viewer_entry_file(viewer_dist: Path) -> Path | None:
     """Return the likely ESM viewer entry file."""
     names = [
@@ -1332,11 +742,12 @@ def find_viewer_entry_file(viewer_dist: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
-def make_handler(
+def make_handler(  # noqa: PLR0913
     *,
     store: IndexStore,
     asset_root: Path,
     viewer_dist: Path | None,
+    playview_dist: Path | None,
     embedding_provider: EmbeddingProvider | None = None,
     embedding_batch_size: int = 32,
 ) -> type[BackendRequestHandler]:
@@ -1351,6 +762,11 @@ def make_handler(
     )
     ConfiguredBackendRequestHandler.viewer_dist = (
         viewer_dist.expanduser().resolve() if viewer_dist is not None else None
+    )
+    ConfiguredBackendRequestHandler.playview_dist = (
+        playview_dist.expanduser().resolve()
+        if playview_dist is not None
+        else None
     )
     ConfiguredBackendRequestHandler.embedding_provider = embedding_provider
     ConfiguredBackendRequestHandler.embedding_batch_size = embedding_batch_size
@@ -1388,6 +804,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional built @constellation/viewer dist directory.",
+    )
+    parser.add_argument(
+        "--playview-dist",
+        type=Path,
+        default=None,
+        help="Optional built @constellation/playview dist directory.",
     )
     parser.add_argument(
         "--embedding-engine",
@@ -1437,11 +859,13 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> int:
     """Run the local backend until interrupted."""
     viewer_dist_arg = cast("Path | None", args.viewer_dist)
+    playview_dist_arg = cast("Path | None", args.playview_dist)
     config = BackendConfig(
         host=str(args.host),
         port=int(args.port),
         data_dir=Path(args.data_dir),
         viewer_dist=viewer_dist_arg,
+        playview_dist=playview_dist_arg,
         embedding_engine=str(args.embedding_engine),
         embedding_model=str(args.embedding_model),
         embedding_pretrained=str(args.embedding_pretrained),
@@ -1452,6 +876,9 @@ def run(args: argparse.Namespace) -> int:
     )
     paths = default_indexing_paths(config.data_dir)
     viewer_dist = config.viewer_dist or find_default_viewer_dist(Path.cwd())
+    playview_dist = config.playview_dist or find_default_playview_dist(
+        Path.cwd()
+    )
     store = IndexStore(paths.db_path, asset_root=paths.asset_root)
     embedding_provider = create_embedding_provider(
         engine=config.embedding_engine,
@@ -1469,6 +896,7 @@ def run(args: argparse.Namespace) -> int:
         store=store,
         asset_root=paths.asset_root,
         viewer_dist=viewer_dist,
+        playview_dist=playview_dist,
         embedding_provider=embedding_provider,
         embedding_batch_size=config.embedding_batch_size,
     )
@@ -1504,6 +932,7 @@ def run_test_backend(
     *,
     data_dir: Path,
     viewer_dist: Path | None = None,
+    playview_dist: Path | None = None,
     embedding_provider: EmbeddingProvider | None = None,
     embedding_batch_size: int = 32,
 ) -> Generator[str]:
@@ -1514,6 +943,7 @@ def run_test_backend(
         store=store,
         asset_root=paths.asset_root,
         viewer_dist=viewer_dist,
+        playview_dist=playview_dist,
         embedding_provider=embedding_provider,
         embedding_batch_size=embedding_batch_size,
     )

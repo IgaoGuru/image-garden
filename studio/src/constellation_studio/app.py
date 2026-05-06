@@ -66,6 +66,17 @@ def find_bundled_viewer_dist(start: Path) -> Path | None:
     return None
 
 
+def find_bundled_playview_dist(start: Path) -> Path | None:
+    """Find a bundled or repo-built Playview dist."""
+    candidates = [start, *start.parents]
+    for base in candidates:
+        for relative in (Path("playview-dist"), Path("playview") / "dist"):
+            candidate = base / relative
+            if candidate.is_dir():
+                return candidate.resolve()
+    return None
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the local app launcher parser."""
     parser = argparse.ArgumentParser(
@@ -82,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Built @constellation/viewer dist directory.",
+    )
+    parser.add_argument(
+        "--playview-dist",
+        type=Path,
+        default=None,
+        help="Built @constellation/playview dist directory.",
     )
     parser.add_argument(
         "--host", default=backend.DEFAULT_HOST, help="Bind host."
@@ -147,10 +164,19 @@ def run(args: argparse.Namespace) -> int:
             if env_viewer
             else find_bundled_viewer_dist(Path.cwd())
         )
-    if viewer_dist is None:
+    playview_dist = cast("Path | None", args.playview_dist)
+    if playview_dist is None:
+        env_playview = os.environ.get("CONSTELLATION_PLAYVIEW_DIST")
+        playview_dist = (
+            Path(env_playview)
+            if env_playview
+            else find_bundled_playview_dist(Path.cwd())
+        )
+    if playview_dist is None:
         print(
-            "warning: viewer dist not found; backend will show its fallback UI. "
-            "Run `pnpm --filter @constellation/viewer build` in development.",
+            "warning: playview dist not found; backend will show a small "
+            "missing-build page. Run `pnpm --filter @constellation/playview "
+            "build` in development.",
         )
 
     engine = str(args.embedding_engine).strip().lower()
@@ -178,6 +204,7 @@ def run(args: argparse.Namespace) -> int:
         port=int(args.port),
         data_dir=data_dir,
         viewer_dist=viewer_dist,
+        playview_dist=playview_dist,
         embedding_engine=engine,
         embedding_model=str(args.embedding_model),
         embedding_pretrained=str(args.embedding_pretrained),

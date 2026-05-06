@@ -158,21 +158,21 @@ class OnnxClipEmbeddingProvider:
                 msg = f"ONNX model file does not exist: {model_path}"
                 raise FileNotFoundError(msg)
 
+            ort_module = cast("Any", ort)
             get_available_providers = cast(
                 "Callable[[], list[str]]",
-                ort.get_available_providers,
+                ort_module.get_available_providers,
             )
-            session = ort.InferenceSession(
+            session = ort_module.InferenceSession(
                 str(model_path),
                 providers=onnx_providers(
                     get_available_providers,
                     self.provider,
                 ),
             )
+            input_name = str(session.get_inputs()[0].name)
             object.__setattr__(self, "_session", session)
-            object.__setattr__(
-                self, "_input_name", session.get_inputs()[0].name
-            )
+            object.__setattr__(self, "_input_name", input_name)
         if self._session is None or self._input_name is None:
             msg = "failed to initialize ONNX Runtime session"
             raise RuntimeError(msg)

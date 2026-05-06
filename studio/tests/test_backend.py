@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 import json
@@ -30,6 +31,19 @@ from constellation_studio.source_adapters import FolderSourceAdapter
 def create_image(path: Path, color: tuple[int, int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (8, 6), color).save(path)
+
+
+def create_playview_dist(path: Path) -> Path:
+    path.mkdir(parents=True)
+    (path / "index.html").write_text(
+        '<!doctype html><div id="viewer"></div><script type="module" '
+        'src="/assets/app.js"></script>',
+        encoding="utf-8",
+    )
+    assets = path / "assets"
+    assets.mkdir()
+    (assets / "app.js").write_text("console.log('playview')\n")
+    return path
 
 
 def fetch_json(url: str) -> object:
@@ -246,6 +260,7 @@ def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
 
     with run_test_backend(
         data_dir=tmp_path / "app-data",
+        playview_dist=create_playview_dist(tmp_path / "playview-dist"),
         embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
     ) as base_url:
         status = fetch_json(f"{base_url}api/status")
@@ -259,9 +274,12 @@ def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
         assert all(source["enabled"] is True for source in sources["sources"])
 
         index_html = fetch_text(base_url)
-        assert "build your constellation of images" in index_html
-        assert "already have a image-embedding dataset?" in index_html
-        assert "cloud connector" not in index_html
+        assert 'id="viewer"' in index_html
+        assert (
+            fetch_text(f"{base_url}assets/app.js")
+            == "console.log('playview')\n"
+        )
+        assert "build your constellation of images" not in index_html
 
         imported = post_json(
             f"{base_url}api/import/folder",

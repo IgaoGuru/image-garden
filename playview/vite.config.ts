@@ -1,0 +1,16 @@
+import { resolve } from 'node:path';
+
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      '@constellation/viewer': resolve(__dirname, '../packages/viewer/src/index.ts'),
+    },
+  },
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:8766',
+    },
+  },
+});

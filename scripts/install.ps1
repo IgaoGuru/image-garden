@@ -46,11 +46,12 @@ Write-Host "Preparing local Python environment..."
 uv --directory studio sync --inexact --extra onnx
 
 if ((Test-Path "package.json") -and (Test-Command "pnpm")) {
-    Write-Host "Building viewer assets..."
+    Write-Host "Building web assets..."
     pnpm install --frozen-lockfile
     pnpm --filter '@constellation/viewer' build
+    pnpm --filter '@constellation/playview' build
 } else {
-    Write-Host "Viewer build skipped; using bundled viewer-dist if present."
+    Write-Host "Web build skipped; using bundled dist assets if present."
 }
 
 Write-Host "Starting Constellation..."

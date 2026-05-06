@@ -410,10 +410,9 @@ def metadata_from_json(payload: str) -> dict[str, object]:
     loaded = cast("object", json.loads(payload))
     if not isinstance(loaded, Mapping):
         return {}
+    typed = cast("Mapping[object, object]", loaded)
     return {
-        str(key): value
-        for key, value in loaded.items()
-        if isinstance(key, str)
+        str(key): value for key, value in typed.items() if isinstance(key, str)
     }
 
 

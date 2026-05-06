@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Constellation</title>
+  </head>
+  <body>
+    <main id="viewer"></main>
+    <div id="status" aria-live="polite">loading</div>
+    <div id="help-text"></div>
+    <section id="onboarding" aria-live="polite"></section>
+    <section id="progress" aria-live="polite">
+      <div class="progress-panel">
+        <div class="progress-line"><span id="progress-phase">embedding images</span><span id="progress-count">0 / 0</span></div>
+        <div class="bar"><div id="progress-fill" class="bar-fill"></div></div>
+        <div id="starfield" class="starfield" aria-hidden="true"></div>
+        <div id="progress-log" class="progress-log" aria-live="polite"></div>
+      </div>
+    </section>
+    <section id="menu" aria-hidden="true">
+      <div class="menu-panel" role="dialog" aria-label="menu">
+        <button type="button" data-menu="reset-camera">reset camera</button>
+        <button type="button" data-menu="fit-constellation">fit constellation</button>
+        <button type="button" data-menu="reimport">reimport last folder</button>
+        <button type="button" data-menu="open-data">open data folder</button>
+        <button type="button" data-menu="clear-data">clear data</button>
+        <button type="button" data-menu="debug">debug status</button>
+        <button type="button" data-menu="close">close</button>
+        <pre id="debug" class="debug"></pre>
+      </div>
+    </section>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -11,9 +11,10 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
 cd "$ROOT"
-printf 'Building viewer assets…\n'
+printf 'Building web assets…\n'
 pnpm install --frozen-lockfile
 pnpm --filter @constellation/viewer build
+pnpm --filter @constellation/playview build
 
 if [ ! -f models/clip-image-encoder.onnx ]; then
   printf 'warning: models/clip-image-encoder.onnx not found.\n'
@@ -24,7 +25,7 @@ printf 'Preparing Python package lock/environment metadata…\n'
 uv --directory studio lock
 
 printf 'Staging release files…\n'
-mkdir -p "$STAGE/studio" "$STAGE/viewer-dist" "$STAGE/scripts"
+mkdir -p "$STAGE/studio" "$STAGE/viewer-dist" "$STAGE/playview-dist" "$STAGE/scripts"
 if [ -d models ]; then
   mkdir -p "$STAGE/models"
   rsync -a models/ "$STAGE/models/"
@@ -35,6 +36,7 @@ rsync -a \
   --exclude '__pycache__' \
   studio/ "$STAGE/studio/"
 rsync -a packages/viewer/dist/ "$STAGE/viewer-dist/"
+rsync -a playview/dist/ "$STAGE/playview-dist/"
 cp scripts/install.sh scripts/install.ps1 "$STAGE/scripts/"
 cp README.md spec.md package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
 
@@ -42,14 +44,14 @@ cat > "$STAGE/constellation" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec uv --project "$ROOT/studio" run constellation-app --viewer-dist "$ROOT/viewer-dist" "$@"
+exec uv --project "$ROOT/studio" run constellation-app --viewer-dist "$ROOT/viewer-dist" --playview-dist "$ROOT/playview-dist" "$@"
 SH
 chmod +x "$STAGE/constellation"
 
 cat > "$STAGE/constellation.ps1" <<'PS1'
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-uv --project (Join-Path $Root "studio") run constellation-app --viewer-dist (Join-Path $Root "viewer-dist") @args
+uv --project (Join-Path $Root "studio") run constellation-app --viewer-dist (Join-Path $Root "viewer-dist") --playview-dist (Join-Path $Root "playview-dist") @args
 PS1
 
 printf 'Writing archive %s…\n' "$ARCHIVE"
