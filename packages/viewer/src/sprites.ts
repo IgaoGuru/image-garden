@@ -17,6 +17,7 @@ import type { ConstellationImage, PositionedImage, SpriteOptions } from './types
 interface SpriteRecord {
   image: PositionedImage;
   mesh: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  baseHeight: number;
   loaded: boolean;
   cancelLoad?: () => void;
 }
@@ -26,10 +27,33 @@ export interface SpriteManagerOptions extends SpriteOptions {
   onHover?: (image: ConstellationImage | null) => void;
 }
 
+export function viewportHeightScaleForCap(options: {
+  spriteWorldHeight: number;
+  depth: number;
+  cameraFovDegrees: number;
+  maxViewportHeight: number;
+}): number {
+  if (
+    options.spriteWorldHeight <= 0 ||
+    options.depth <= 0 ||
+    options.maxViewportHeight <= 0 ||
+    !Number.isFinite(options.maxViewportHeight)
+  ) {
+    return 1;
+  }
+  const visibleWorldHeight =
+    2 * options.depth * Math.tan((options.cameraFovDegrees * Math.PI) / 360);
+  const cappedScale =
+    (options.maxViewportHeight * visibleWorldHeight) / options.spriteWorldHeight;
+  return Math.min(1, Math.max(0, cappedScale));
+}
+
 export class SpriteManager {
   private readonly group = new Group();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(0, 0);
+  private readonly cameraForward = new Vector3();
+  private readonly spriteOffset = new Vector3();
   private readonly records = new Map<string, SpriteRecord>();
   private readonly textureQueue: TextureLoadQueue;
   private readonly domElement: HTMLElement;
@@ -54,6 +78,7 @@ export class SpriteManager {
       lazyLoadDistance: options.lazyLoadDistance ?? 180,
       maxConcurrentLoads: options.maxConcurrentLoads ?? 8,
       maxLoadedTextures: options.maxLoadedTextures ?? 1_000,
+      maxViewportHeight: options.maxViewportHeight ?? 0.22,
       billboard: options.billboard ?? true,
       placeholderColor: options.placeholderColor ?? 0x777799,
       selectedColor: options.selectedColor ?? 0xffcc66,
@@ -87,7 +112,7 @@ export class SpriteManager {
       mesh.position.set(image.position[0], image.position[1], image.position[2]);
       mesh.userData = { id: image.id };
       this.group.add(mesh);
-      this.records.set(image.id, { image, mesh, loaded: false });
+      this.records.set(image.id, { image, mesh, baseHeight: height, loaded: false });
     }
   }
 
@@ -97,6 +122,8 @@ export class SpriteManager {
         record.mesh.quaternion.copy(camera.quaternion);
       }
     }
+
+    this.applyViewportHeightCap(camera);
 
     this.loadAccumulator += deltaSeconds;
     if (this.loadAccumulator >= 0.25) {
@@ -129,6 +156,23 @@ export class SpriteManager {
     this.clearMeshes();
     this.scene.remove(this.group);
     this.textureQueue.dispose();
+  }
+
+  private applyViewportHeightCap(camera: PerspectiveCamera): void {
+    if (!Number.isFinite(this.options.maxViewportHeight)) return;
+    camera.updateMatrixWorld(true);
+    camera.getWorldDirection(this.cameraForward).normalize();
+    for (const record of this.records.values()) {
+      this.spriteOffset.subVectors(record.mesh.position, camera.position);
+      const depth = this.spriteOffset.dot(this.cameraForward);
+      const scale = viewportHeightScaleForCap({
+        spriteWorldHeight: record.baseHeight,
+        depth,
+        cameraFovDegrees: camera.fov,
+        maxViewportHeight: this.options.maxViewportHeight,
+      });
+      record.mesh.scale.setScalar(scale);
+    }
   }
 
   private loadNearby(cameraPosition: Vector3): void {

@@ -86,6 +86,47 @@ test('clicking a sprite invokes onSelect with the picked image', async ({ page }
   expect(consoleErrors).toEqual([]);
 });
 
+test('near sprites shrink to stay below maximum viewport height', async ({ page }) => {
+  const consoleErrors = collectConsoleErrors(page);
+
+  await page.goto('/tests/fixture.html');
+  const scales = await page.evaluate(async () => {
+    const { mount } = await import('/src/index.ts');
+    const root = document.querySelector<HTMLElement>('#root');
+    if (!root) throw new Error('Missing root');
+
+    const viewer = mount(
+      root,
+      {
+        images: [
+          { id: 'near', url: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E', position: [0, 0, 0] },
+        ],
+      },
+      {
+        camera: { fov: 90, position: [0, 0, 5] },
+        controls: { enabled: false },
+        sprites: { size: 10, maxViewportHeight: 0.2, lazyLoadDistance: 100 },
+      },
+    );
+
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const privateViewer = viewer as unknown as {
+      sceneHost: { camera: { position: { z: number } } };
+      sprites: { records: Map<string, { mesh: { scale: { x: number } } }> };
+    };
+    const nearScale = privateViewer.sprites.records.get('near')?.mesh.scale.x;
+    privateViewer.sceneHost.camera.position.z = 50;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const farScale = privateViewer.sprites.records.get('near')?.mesh.scale.x;
+    viewer.destroy();
+    return { nearScale, farScale };
+  });
+
+  expect(scales.nearScale).toBeLessThan(0.25);
+  expect(scales.farScale).toBeCloseTo(1, 2);
+  expect(consoleErrors).toEqual([]);
+});
+
 test('public API supports mount, setData, setSelected, destroy, and validation', async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
 

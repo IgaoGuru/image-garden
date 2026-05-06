@@ -53,6 +53,8 @@ export interface SpriteOptions {
   lazyLoadDistance?: number;
   maxConcurrentLoads?: number;
   maxLoadedTextures?: number;
+  /** Maximum fraction of viewport height a sprite may occupy before it shrinks. Set to Infinity to disable. */
+  maxViewportHeight?: number;
   billboard?: boolean;
   placeholderColor?: number;
   selectedColor?: number;

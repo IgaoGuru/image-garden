@@ -44,3 +44,7 @@ Each image can provide either:
 - `position`: precomputed `[x, y, z]`; the viewer centers it by default and otherwise preserves its units unless `layout.scale` is provided.
 
 `thumbnailUrl` is preferred for scene textures. `url` is the fallback/full image URL.
+
+## Close-up sprite stability
+
+By default, sprites are capped to `sprites.maxViewportHeight = 0.22`, meaning an image can occupy at most 22% of the viewport height. When you fly very close to a dense cluster, nearby images shrink just enough to keep that observed height stable, revealing neighboring images instead of filling the whole screen. When you back away, they return to normal world size. Set `maxViewportHeight: Infinity` to disable this behavior.
