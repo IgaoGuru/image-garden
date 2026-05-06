@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/main.js",
   "scripts": {
-    "dev": "electron .",
+    "dev": "pnpm --dir ../.. --filter @constellation/viewer build && electron .",
     "start": "electron ."
   },
   "devDependencies": {

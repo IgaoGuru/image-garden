@@ -10,6 +10,10 @@ let backendProcess = null;
 let backendUrl = null;
 let mainWindow = null;
 
+function viewerDistPath() {
+  return process.env.CONSTELLATION_VIEWER_DIST ?? path.join(repoRoot, 'packages', 'viewer', 'dist');
+}
+
 function backendCommand() {
   if (process.env.CONSTELLATION_BACKEND_COMMAND) {
     return {
@@ -31,6 +35,8 @@ function backendCommand() {
       '0',
       '--data-dir',
       path.join(app.getPath('userData'), 'backend'),
+      '--viewer-dist',
+      viewerDistPath(),
     ],
     shell: false,
   };
