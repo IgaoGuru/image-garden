@@ -1,3 +1,0 @@
-# Plan
-
-See `spec.md`.
