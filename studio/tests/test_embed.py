@@ -22,6 +22,8 @@ from constellation_studio.schema import (
 
 
 class FakeEmbedder:
+    cache_namespace = "fake"
+
     def __init__(self) -> None:
         self.calls: list[list[Path]] = []
 
@@ -34,6 +36,8 @@ class FakeEmbedder:
 
 
 class FailingEmbedder:
+    cache_namespace = "failing"
+
     def __init__(self) -> None:
         self.single_calls = 0
 

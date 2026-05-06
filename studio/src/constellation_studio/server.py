@@ -14,6 +14,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from socketserver import TCPServer
+from typing import ClassVar
 from urllib.parse import quote, unquote, urlsplit
 
 from constellation_studio.schema import (
@@ -97,7 +98,8 @@ INDEX_HTML = """<!doctype html>
         img.src = image.url;
         img.alt = image.id;
         const caption = document.createElement('div');
-        caption.textContent = `${image.id} · ${image.embedding.length}D`;
+        const shape = Array.isArray(image.embedding) ? `${image.embedding.length}D` : 'positioned';
+        caption.textContent = `${image.id} · ${shape}`;
         card.append(img, caption);
         grid.append(card);
       }
@@ -111,16 +113,16 @@ INDEX_HTML = """<!doctype html>
 class QuietThreadingHTTPServer(ThreadingHTTPServer):
     """ThreadingHTTPServer with reusable sockets for quick restarts."""
 
-    allow_reuse_address = True
+    allow_reuse_address: bool = True
 
 
 class StudioRequestHandler(BaseHTTPRequestHandler):
     """Request handler configured by ``make_handler``."""
 
-    image_root: Path
-    data_path: Path
-    image_url_prefix: str
-    viewer_dist: Path | None
+    image_root: ClassVar[Path]
+    data_path: ClassVar[Path]
+    image_url_prefix: ClassVar[str]
+    viewer_dist: ClassVar[Path | None]
 
     def do_GET(self) -> None:
         """Serve a GET request."""

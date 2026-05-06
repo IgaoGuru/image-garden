@@ -1,4 +1,72 @@
-import { mount, type ConstellationData } from '../src';
+import {
+  createStaticDataSource,
+  createSyntheticRuntimeAssets,
+  mount,
+  mountFromDataSource,
+  type ConstellationData,
+} from '../src';
+
+const selected = document.querySelector<HTMLParagraphElement>('#selected');
+const app = document.querySelector<HTMLElement>('#app');
+if (!app) throw new Error('Missing #app element');
+
+const useEmbeddingFallback = new URLSearchParams(window.location.search).has('embedding');
+
+if (useEmbeddingFallback) {
+  mount(app, createEmbeddingFallbackData(), {
+    backgroundColor: 0x05050a,
+    layout: { scale: 180, seed: 7, nNeighbors: 12, minDist: 0.12 },
+    sprites: { size: 10, lazyLoadDistance: 260, maxLoadedTextures: 240 },
+    controls: { moveSpeed: 60, sprintMultiplier: 3 },
+    onSelect: updateSelection,
+  });
+} else {
+  const dataSource = createStaticDataSource(createSyntheticRuntimeAssets({ count: 5_000, radius: 950 }));
+  void mountFromDataSource(app, dataSource, {
+    backgroundColor: 0x05050a,
+    layout: { center: false },
+    sprites: {
+      renderMode: 'lod',
+      size: 10,
+      pointSize: 3,
+      lazyLoadDistance: 260,
+      textureUnloadDistance: 360,
+      maxTexturedCards: 180,
+      maxConcurrentLoads: 8,
+    },
+    controls: { moveSpeed: 90, sprintMultiplier: 3 },
+    onSelect: updateSelection,
+  });
+}
+
+function updateSelection(image: { id: string; metadata?: Record<string, unknown> }): void {
+  if (selected) {
+    selected.textContent = `Selected ${image.id} (${String(image.metadata?.category ?? image.metadata?.ordinal ?? 'runtime asset')})`;
+  }
+}
+
+function createEmbeddingFallbackData(): ConstellationData {
+  return {
+    images: Array.from({ length: 180 }, (_, index) => {
+      const category = categories[index % categories.length] ?? categories[0];
+      const embedding = category.vector.flatMap((value, dim) => [
+        value + Math.sin(index * 0.13 + dim) * 0.06,
+        value * 0.5 + Math.cos(index * 0.17 + dim) * 0.06,
+        Math.sin(index * 0.07 + dim) * 0.03,
+        Math.cos(index * 0.11 + dim) * 0.03,
+      ]);
+      return {
+        id: `demo-${index}`,
+        url: makeSvgDataUrl(category.name, category.color, index),
+        thumbnailUrl: makeSvgDataUrl(category.name, category.color, index),
+        embedding,
+        width: 256,
+        height: 256,
+        metadata: { category: category.name },
+      };
+    }),
+  };
+}
 
 const categories = [
   { name: 'forest', color: '#4ade80', vector: [1, 0, 0, 0, 0, 0] },
@@ -8,43 +76,6 @@ const categories = [
   { name: 'snow', color: '#e5e7eb', vector: [0, 0, 0, 0, 1, 0] },
   { name: 'flowers', color: '#f472b6', vector: [0, 0, 0, 0, 0, 1] },
 ] as const;
-
-const data: ConstellationData = {
-  images: Array.from({ length: 180 }, (_, index) => {
-    const category = categories[index % categories.length] ?? categories[0];
-    const embedding = category.vector.flatMap((value, dim) => [
-      value + Math.sin(index * 0.13 + dim) * 0.06,
-      value * 0.5 + Math.cos(index * 0.17 + dim) * 0.06,
-      Math.sin(index * 0.07 + dim) * 0.03,
-      Math.cos(index * 0.11 + dim) * 0.03,
-    ]);
-    return {
-      id: `demo-${index}`,
-      url: makeSvgDataUrl(category.name, category.color, index),
-      thumbnailUrl: makeSvgDataUrl(category.name, category.color, index),
-      embedding,
-      width: 256,
-      height: 256,
-      metadata: { category: category.name },
-    };
-  }),
-};
-
-const selected = document.querySelector<HTMLParagraphElement>('#selected');
-const app = document.querySelector<HTMLElement>('#app');
-if (!app) throw new Error('Missing #app element');
-
-mount(app, data, {
-  backgroundColor: 0x05050a,
-  layout: { scale: 180, seed: 7, nNeighbors: 12, minDist: 0.12 },
-  sprites: { size: 10, lazyLoadDistance: 260, maxLoadedTextures: 240 },
-  controls: { moveSpeed: 60, sprintMultiplier: 3 },
-  onSelect: (image) => {
-    if (selected) {
-      selected.textContent = `Selected ${image.id} (${String(image.metadata?.category ?? 'unknown')})`;
-    }
-  },
-});
 
 function makeSvgDataUrl(label: string, color: string, index: number): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">

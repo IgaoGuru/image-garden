@@ -14,7 +14,8 @@ class ImageJson(TypedDict):
 
     id: str
     url: str
-    embedding: list[float]
+    embedding: NotRequired[list[float]]
+    position: NotRequired[list[float]]
     thumbnailUrl: NotRequired[str]
     width: NotRequired[int]
     height: NotRequired[int]
@@ -169,10 +170,28 @@ def parse_image_json(image_obj: object, path: Path) -> ImageJson:
     image: ImageJson = {
         "id": id_obj,
         "url": url_obj,
-        "embedding": parse_embedding(image_mapping.get("embedding"), path),
     }
+    embedding = optional_embedding(image_mapping.get("embedding"), path)
+    position = optional_position(image_mapping.get("position"), path)
+    if embedding is None and position is None:
+        msg = f"image must include embedding or position in: {path}"
+        raise ValueError(msg)
+    if embedding is not None:
+        image["embedding"] = embedding
+    if position is not None:
+        image["position"] = position
     apply_optional_image_fields(image_mapping, image, path)
     return image
+
+
+def optional_embedding(
+    embedding_obj: object,
+    path: Path,
+) -> list[float] | None:
+    """Parse an optional embedding list."""
+    if embedding_obj is None:
+        return None
+    return parse_embedding(embedding_obj, path)
 
 
 def parse_embedding(embedding_obj: object, path: Path) -> list[float]:
@@ -187,6 +206,20 @@ def parse_embedding(embedding_obj: object, path: Path) -> list[float]:
             raise ValueError(msg)
         embedding.append(float(value))
     return embedding
+
+
+def optional_position(
+    position_obj: object,
+    path: Path,
+) -> list[float] | None:
+    """Parse an optional precomputed 3D position."""
+    if position_obj is None:
+        return None
+    position = parse_embedding(position_obj, path)
+    if len(position) != 3:
+        msg = f"invalid position in: {path}"
+        raise ValueError(msg)
+    return position
 
 
 def apply_optional_image_fields(

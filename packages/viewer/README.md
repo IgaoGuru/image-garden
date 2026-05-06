@@ -1,6 +1,48 @@
 # @constellation/viewer
 
-Flyable Three.js viewer for image embedding constellations.
+Flyable Three.js viewer for positioned photo constellations.
+
+The product/runtime path consumes precomputed `RuntimeAsset` records through a mockable `ConstellationDataSource` boundary. Embedding-based browser UMAP remains available as a developer/demo fallback, but runtime viewers should not require embeddings.
+
+```ts
+import {
+  createStaticDataSource,
+  mountFromDataSource,
+  type RuntimeAsset,
+} from '@constellation/viewer';
+
+const assets: RuntimeAsset[] = [
+  {
+    id: 'image-1',
+    thumbnailUrl: '/api/thumbnails/image-1',
+    fullUrl: '/api/files/image-1',
+    position: [0, 0, 0],
+    metadata: { sourcePath: '/Photos/image-1.jpg' },
+  },
+];
+
+const source = createStaticDataSource(assets);
+const viewer = await mountFromDataSource(document.querySelector('#app')!, source, {
+  layout: { center: false },
+  sprites: { renderMode: 'auto' },
+  onSelect: (image) => console.log(image),
+});
+
+// later
+viewer.destroy();
+```
+
+For a local HTTP backend implementing the roadmap API:
+
+```ts
+import { createFetchDataSource, mountFromDataSource } from '@constellation/viewer';
+
+await mountFromDataSource(el, createFetchDataSource({ baseUrl: 'http://127.0.0.1:8000' }));
+```
+
+## Legacy/direct mount
+
+Existing direct mounting is preserved:
 
 ```ts
 import { mount, type ConstellationData } from '@constellation/viewer';
@@ -12,19 +54,12 @@ const data: ConstellationData = {
       url: '/photos/image-1.jpg',
       thumbnailUrl: '/thumbs/image-1.jpg',
       embedding: [/* CLIP vector */],
-      // position: [0, 0, 0], // optional precomputed 3D position instead of embedding
+      // position: [0, 0, 0], // preferred when available
     },
   ],
 };
 
-const viewer = mount(document.querySelector('#app')!, data, {
-  layout: { scale: 160 },
-  sprites: { size: 8 },
-  onSelect: (image) => console.log(image),
-});
-
-// later
-viewer.destroy();
+mount(el, data, { layout: { scale: 160 } });
 ```
 
 ## Controls
@@ -38,31 +73,29 @@ viewer.destroy();
 
 ## Data contract
 
-Each image can provide either:
+Runtime assets provide `id`, `thumbnailUrl`, optional `fullUrl`, optional size/metadata, and required precomputed `position: [x, y, z]`.
 
-- `embedding`: high-dimensional vector; the viewer runs UMAP in-browser and normalizes the result to `layout.scale` world units, or
-- `position`: precomputed `[x, y, z]`; the viewer centers it by default and otherwise preserves its units unless `layout.scale` is provided.
+Legacy `ConstellationData` images can provide either:
 
-`thumbnailUrl` is preferred for scene textures. `url` is the fallback/full image URL.
+- `position`: precomputed `[x, y, z]`; centered by default and otherwise preserves its units unless `layout.scale` is provided, or
+- `embedding`: high-dimensional vector; the viewer runs UMAP in-browser as a developer fallback.
 
-## Cluster readability
+## Scalable rendering path
 
-Embedding-derived layouts run a small 3D collision relaxation pass by default. Nearby points are pushed apart while being weakly pulled back toward their original UMAP positions, reducing sprite pileups without encoding density as image size.
+`sprites.renderMode: 'lod'` renders every asset as a cheap point cloud and promotes nearby/selected assets to textured cards. It also evicts distant non-selected cards. `renderMode: 'auto'` switches to LOD above `lodThreshold` assets.
 
 Useful knobs:
 
 ```ts
-mount(el, data, {
-  layout: {
-    collisionRelaxation: true,
-    collisionDistance: 10,
-    collisionIterations: 35,
-    collisionAnchorStrength: 0.025,
-  },
+mountFromDataSource(el, source, {
   sprites: {
-    maxViewportHeight: 0.45,
+    renderMode: 'lod',
+    pointSize: 3,
+    lazyLoadDistance: 260,
+    textureUnloadDistance: 360,
+    maxTexturedCards: 180,
   },
 });
 ```
 
-The viewport-height cap is now only an emergency close-up guard: by default, a sprite can occupy at most 45% of the viewport height. Set `maxViewportHeight: Infinity` to disable it.
+Embedding-derived layouts still run a small 3D collision relaxation pass by default. The viewport-height cap is an emergency close-up guard; set `maxViewportHeight: Infinity` to disable it.
