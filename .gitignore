@@ -13,3 +13,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+/constellation.json
+/constellation.studio.json
+/constellation-assets/
