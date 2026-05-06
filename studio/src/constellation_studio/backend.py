@@ -21,7 +21,11 @@ from socketserver import TCPServer
 from typing import ClassVar, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from constellation_studio.embed import DEFAULT_MODEL, DEFAULT_PRETRAINED
+from constellation_studio.embed import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_MODEL,
+    DEFAULT_PRETRAINED,
+)
 from constellation_studio.embedding_providers import (
     EmbeddingProvider,
     create_embedding_provider,
@@ -63,7 +67,7 @@ class BackendConfig:
     embedding_model: str = DEFAULT_MODEL
     embedding_pretrained: str = DEFAULT_PRETRAINED
     embedding_device: str = "auto"
-    embedding_batch_size: int = 32
+    embedding_batch_size: int = DEFAULT_BATCH_SIZE
     onnx_model: Path | None = None
     onnx_provider: str = "auto"
 
@@ -749,7 +753,7 @@ def make_handler(  # noqa: PLR0913
     viewer_dist: Path | None,
     playview_dist: Path | None,
     embedding_provider: EmbeddingProvider | None = None,
-    embedding_batch_size: int = 32,
+    embedding_batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> type[BackendRequestHandler]:
     """Return a request handler bound to a store and paths."""
 
@@ -834,8 +838,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedding-batch-size",
         type=int,
-        default=8,
-        help="Images per embedding batch.",
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Images per embedding batch (default: {DEFAULT_BATCH_SIZE}).",
     )
     parser.add_argument(
         "--onnx-model",
@@ -934,7 +938,7 @@ def run_test_backend(
     viewer_dist: Path | None = None,
     playview_dist: Path | None = None,
     embedding_provider: EmbeddingProvider | None = None,
-    embedding_batch_size: int = 32,
+    embedding_batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> Generator[str]:
     """Start an ephemeral backend server for tests."""
     paths = default_indexing_paths(data_dir)

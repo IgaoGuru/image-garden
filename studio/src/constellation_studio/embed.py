@@ -30,7 +30,7 @@ from constellation_studio.schema import (
 
 DEFAULT_MODEL = "ViT-B-32"
 DEFAULT_PRETRAINED = "laion2b_s34b_b79k"
-DEFAULT_BATCH_SIZE = 32
+DEFAULT_BATCH_SIZE = 64
 DEFAULT_OUTPUT = Path("constellation.json")
 
 Embedding = tuple[float, ...]

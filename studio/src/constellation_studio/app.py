@@ -11,7 +11,11 @@ from typing import cast
 
 from constellation_studio import backend
 from constellation_studio.download_onnx import download_onnx_model
-from constellation_studio.embed import DEFAULT_MODEL, DEFAULT_PRETRAINED
+from constellation_studio.embed import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_MODEL,
+    DEFAULT_PRETRAINED,
+)
 
 
 def default_app_data_dir() -> Path:
@@ -132,8 +136,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--embedding-batch-size",
         type=int,
-        default=8,
-        help="Images per embedding batch.",
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Images per embedding batch (default: {DEFAULT_BATCH_SIZE}).",
     )
     parser.add_argument(
         "--onnx-model",

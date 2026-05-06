@@ -99,7 +99,7 @@ def import_folder(  # noqa: PLR0913
     asset_root: Path,
     skip_errors: bool = True,
     embedding_provider: EmbeddingProvider | None = None,
-    batch_size: int = 32,
+    batch_size: int = 64,
 ) -> ImportResult:
     """Import a folder through the source-adapter/index-store boundary.
 
