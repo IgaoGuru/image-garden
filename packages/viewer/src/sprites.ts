@@ -57,7 +57,20 @@ export class SpriteManager {
   private readonly records = new Map<string, SpriteRecord>();
   private readonly textureQueue: TextureLoadQueue;
   private readonly domElement: HTMLElement;
-  private readonly options: Required<Omit<SpriteOptions, 'selectedColor'>> & { selectedColor: number };
+  private readonly options: Required<
+    Pick<
+      SpriteOptions,
+      | 'size'
+      | 'minSize'
+      | 'maxAspectRatio'
+      | 'lazyLoadDistance'
+      | 'maxConcurrentLoads'
+      | 'maxLoadedTextures'
+      | 'maxViewportHeight'
+      | 'billboard'
+      | 'placeholderColor'
+    >
+  > & { selectedColor: number };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
   private selectedId: string | null = null;
@@ -191,6 +204,7 @@ export class SpriteManager {
 
     for (const { record } of candidates) {
       const url = record.image.thumbnailUrl ?? record.image.url;
+      if (!url) continue;
       record.cancelLoad = this.textureQueue.request({
         id: record.image.id,
         url,

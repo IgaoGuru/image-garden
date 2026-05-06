@@ -2,26 +2,75 @@ import type { WebGLRendererParameters } from 'three';
 
 export type Vec3 = readonly [number, number, number];
 
+export type RuntimeMediaType = 'image' | 'video' | 'livePhoto' | 'unknown';
+
+export interface RuntimeAssetMetadata {
+  sourcePath?: string;
+  creationDate?: string;
+  mediaType?: RuntimeMediaType;
+  favorite?: boolean;
+  albumIds?: string[];
+  [key: string]: unknown;
+}
+
+/**
+ * Runtime asset contract for frontend/viewer consumption.
+ * Embeddings are intentionally excluded: product/runtime viewing uses
+ * precomputed positions from an indexer/backend or a mock data source.
+ */
+export interface RuntimeAsset {
+  id: string;
+  thumbnailUrl: string;
+  fullUrl?: string;
+  width?: number;
+  height?: number;
+  position: Vec3;
+  metadata?: RuntimeAssetMetadata;
+}
+
 export interface ConstellationImage {
   /** Stable application-level identifier. */
   id: string;
-  /** Image URL used as a fallback for texture loading and full-size display. */
-  url: string;
-  /** Smaller image URL preferred for in-scene texture loading. */
+  /** Legacy/full image URL used as a fallback for texture loading and full-size display. */
+  url?: string;
+  /** Smaller image URL preferred for in-scene texture loading. Required for RuntimeAsset. */
   thumbnailUrl?: string;
   /** Optional full-resolution image URL for consumers' click/selection UIs. */
   fullUrl?: string;
-  /** High-dimensional embedding. Used when `position` is not supplied. */
+  /** High-dimensional embedding. Used only as a demo/developer fallback when `position` is not supplied. */
   embedding?: readonly number[];
-  /** Precomputed 3D layout position. Skips browser-side UMAP when supplied. */
+  /** Precomputed 3D layout position. Preferred runtime path. */
   position?: Vec3;
   width?: number;
   height?: number;
-  metadata?: Record<string, unknown>;
+  metadata?: RuntimeAssetMetadata;
 }
 
 export interface ConstellationData {
   images: ConstellationImage[];
+}
+
+export interface IndexStatus {
+  state: 'idle' | 'importing' | 'indexing' | 'ready' | 'error' | string;
+  totalAssets?: number;
+  indexedAssets?: number;
+  message?: string;
+  updatedAt?: string;
+}
+
+export interface NearbyQuery {
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  limit?: number;
+}
+
+export interface ConstellationDataSource {
+  getStatus(): Promise<IndexStatus>;
+  getInitialAssets(): Promise<RuntimeAsset[]>;
+  getNearbyAssets?(query: NearbyQuery): Promise<RuntimeAsset[]>;
+  getAsset?(id: string): Promise<RuntimeAsset | null>;
 }
 
 export interface LayoutOptions {
@@ -54,13 +103,27 @@ export interface ControlsOptions {
 }
 
 export interface SpriteOptions {
-  /** Base sprite height in world units. Width preserves image aspect ratio when available. */
+  /** `cards` preserves the legacy mesh-per-image path. `lod` renders all assets as cheap points and promotes nearby/selected assets to textured cards. */
+  renderMode?: 'cards' | 'lod' | 'auto';
+  /** Dataset size at which `renderMode: "auto"` switches from cards to LOD. */
+  lodThreshold?: number;
+  /** Base sprite/card height in world units. Width preserves image aspect ratio when available. */
   size?: number;
   minSize?: number;
   maxAspectRatio?: number;
   lazyLoadDistance?: number;
   maxConcurrentLoads?: number;
   maxLoadedTextures?: number;
+  /** LOD mode cap for concurrently materialized textured card meshes. Defaults to `maxLoadedTextures` or 400. */
+  maxTexturedCards?: number;
+  /** Distance after which non-selected LOD cards are evicted. Defaults to 1.35x `lazyLoadDistance`. */
+  textureUnloadDistance?: number;
+  /** LOD point-cloud marker size in CSS pixels. */
+  pointSize?: number;
+  pointColor?: number;
+  pointOpacity?: number;
+  /** World-space raycast radius for LOD point picking. */
+  pointPickRadius?: number;
   /** Maximum fraction of viewport height a sprite may occupy before it shrinks. Set to Infinity to disable. */
   maxViewportHeight?: number;
   billboard?: boolean;
