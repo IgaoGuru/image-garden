@@ -81,6 +81,32 @@ Useful options:
 - `--model` and `--pretrained` are passed to `open_clip.create_model_and_transforms`.
 - `--url-prefix /assets/` sets the server URL prefix for generated assets.
 
+## Local backend API prototype
+
+`constellation-backend` persists positioned runtime assets in SQLite while continuing to reuse the folder JPEG sanitization path:
+
+```bash
+pnpm studio:backend -- --data-dir .constellation-backend
+curl -X POST http://127.0.0.1:8766/api/import/folder \
+  -H 'Content-Type: application/json' \
+  -d '{"path":"/path/to/photos"}'
+```
+
+API routes:
+
+- `GET /api/status`
+- `GET /api/assets?limit=...&offset=...`
+- `GET /api/assets/near?x=...&y=...&z=...&radius=...`
+- `GET /api/assets/:id`
+- `GET /api/thumbnails/:id`
+- `GET /api/files/:id`
+- `POST /api/import/folder`
+- `POST /api/index/start`
+- `POST /api/index/pause`
+- `POST /api/index/resume`
+
+Runtime asset responses contain `id`, `thumbnailUrl`, optional `fullUrl`, size/metadata, and a persisted `position`; embeddings remain indexer/backend data and are not emitted on this runtime API.
+
 ## Serve preview
 
 ```bash

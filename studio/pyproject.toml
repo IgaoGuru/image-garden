@@ -14,6 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
+constellation-backend = "constellation_studio.backend:main"
 constellation-embed = "constellation_studio.embed:main"
 constellation-serve = "constellation_studio.server:main"
 

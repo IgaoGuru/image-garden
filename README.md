@@ -38,6 +38,26 @@ The `studio:*` scripts load `.env` automatically before invoking `uv`.
 
 `studio:embed` ingests HEIC/HEIF/JPEG/PNG/etc. sources into sanitized JPEG assets under `constellation-assets/`, hashes the canonical JPEG bytes for stable ids, writes thumbnails, and caches embeddings for reruns.
 
+## Local backend and desktop shell
+
+The desktop-ready prototype keeps folder import in Studio while persisting positioned runtime assets in SQLite:
+
+```bash
+pnpm studio:backend -- --data-dir .constellation-backend
+curl -X POST http://127.0.0.1:8766/api/import/folder \
+  -H 'Content-Type: application/json' \
+  -d '{"path":"/path/to/photos"}'
+```
+
+The local API includes `/api/status`, `/api/assets`, `/api/assets/near`, `/api/assets/:id`, `/api/thumbnails/:id`, `/api/files/:id`, and basic import/index lifecycle routes.
+
+A thin Electron shell lives in `apps/desktop` and starts/connects to this backend without rewriting the viewer renderer:
+
+```bash
+pnpm --filter @constellation/viewer build
+pnpm desktop:dev
+```
+
 ## Checks
 
 ```bash
