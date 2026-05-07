@@ -60,19 +60,21 @@ let wasPointerLocked = false;
 let tutorialActive = false;
 let tutorialTransitioning = false;
 let tutorialIndex = 0;
+let tutorialStepStartedAt = 0;
 
 const verticalTutorialKeys = new Set<string>();
 const tutorialSteps = [
   { id: 'move', text: 'use <kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd> to move around' },
   { id: 'look', text: 'move your <span class="mouse-icon">🖱</span> mouse to move your view' },
   { id: 'vertical', text: 'use <kbd>space</kbd> and <kbd>C</kbd> to go up and down' },
-  { id: 'slow', text: 'use <kbd>shift</kbd> to go slower' },
+  { id: 'slow', text: 'hold <kbd>shift</kbd> to move faster' },
   { id: 'menu', text: 'press <kbd>esc</kbd> to see the menu' },
 ] as const;
 const spinnerFrames = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠'];
 const progressLogEntries: string[] = [];
 const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
+const minTutorialStepMs = 5_500;
 
 setupWindAmbience();
 
@@ -133,7 +135,7 @@ function installGlobalHandlers(): void {
     if (onboarding.classList.contains('visible') || progress.classList.contains('visible')) return;
     event.preventDefault();
     toggleMenu();
-    if (!tutorialActive) showHelp('wasd move · spacebar up · c down · esc go back', 6000);
+    if (!tutorialActive) showHelp('wasd move · shift fast · spacebar up · c down · esc go back', 6000);
   });
 
   document.addEventListener('pointerlockchange', () => {
@@ -142,7 +144,7 @@ function installGlobalHandlers(): void {
     if (wasPointerLocked && !isPointerLocked && isPlayviewVisible() && !menu.classList.contains('visible')) {
       completeTutorialStep('menu');
       showMenu();
-      if (!tutorialActive) showHelp('wasd move · spacebar up · c down · esc go back', 6000);
+      if (!tutorialActive) showHelp('wasd move · shift fast · spacebar up · c down · esc go back', 6000);
     }
     wasPointerLocked = isPointerLocked;
   });
@@ -494,6 +496,7 @@ function startTutorial(): void {
   tutorialActive = true;
   tutorialTransitioning = false;
   tutorialIndex = 0;
+  tutorialStepStartedAt = 0;
   verticalTutorialKeys.clear();
   showTutorialStep();
 }
@@ -508,6 +511,7 @@ function showTutorialStep(): void {
   }
   helpText.innerHTML = step.text;
   helpText.classList.add('visible');
+  tutorialStepStartedAt = performance.now();
   window.clearTimeout(helpTimer);
 }
 
@@ -515,6 +519,8 @@ function completeTutorialStep(stepId: string): void {
   const step = tutorialSteps[tutorialIndex];
   if (!tutorialActive || tutorialTransitioning || step?.id !== stepId) return;
   tutorialTransitioning = true;
+  const visibleForMs = performance.now() - tutorialStepStartedAt;
+  const remainingVisibleMs = Math.max(0, minTutorialStepMs - visibleForMs);
   window.clearTimeout(helpTimer);
   helpTimer = window.setTimeout(() => {
     helpText.classList.remove('visible');
@@ -528,7 +534,7 @@ function completeTutorialStep(stepId: string): void {
       }
       showTutorialStep();
     }, 1500);
-  }, 1500);
+  }, remainingVisibleMs);
 }
 
 function handleTutorialKey(event: KeyboardEvent): void {
@@ -564,7 +570,7 @@ function hideHelp(): void {
 
 function scheduleIdleHelp(): void {
   window.clearTimeout(idleTimer);
-  idleTimer = window.setTimeout(() => showHelp('wasd move · spacebar up · c down · esc go back', 6000), 5000);
+  idleTimer = window.setTimeout(() => showHelp('wasd move · shift fast · spacebar up · c down · esc go back', 6000), 5000);
 }
 
 function noteActivity(): void {

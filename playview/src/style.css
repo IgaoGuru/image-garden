@@ -16,8 +16,12 @@ input[type="range"] { padding: 0; accent-color: #f6f1e8; }
 
 #viewer { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; opacity: 0; transition: opacity 1400ms ease; }
 #viewer.visible { opacity: 1; }
+#crosshair { position: fixed; left: 50%; top: 50%; z-index: 4; width: 13px; height: 13px; transform: translate(-50%, -50%); opacity: .28; pointer-events: none; filter: drop-shadow(0 0 6px rgba(246,241,232,.22)); }
+#crosshair::before, #crosshair::after { content: ""; position: absolute; left: 50%; top: 50%; background: rgba(246,241,232,.86); transform: translate(-50%, -50%); }
+#crosshair::before { width: 13px; height: 1px; }
+#crosshair::after { width: 1px; height: 13px; }
 #status { position: fixed; left: 18px; bottom: 16px; z-index: 5; max-width: calc(100vw - 36px); color: rgba(246,241,232,.54); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-#help-text { position: fixed; left: 50%; bottom: clamp(96px, 14vh, 160px); z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
+#help-text { position: fixed; left: 50%; bottom: clamp(150px, 24vh, 260px); z-index: 21; transform: translateX(-50%); color: rgba(246,241,232,.58); font-size: 15px; letter-spacing: .01em; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 260ms ease; }
 #help-text.visible { opacity: 1; }
 #help-text kbd { color: rgba(246,241,232,.86); font: inherit; }
 .mouse-icon { color: rgba(246,241,232,.82); }

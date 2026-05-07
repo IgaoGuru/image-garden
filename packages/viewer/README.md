@@ -68,7 +68,7 @@ mount(el, data, { layout: { scale: 160 } });
 - WASD / arrows: fly relative to current look direction.
 - Space or E: world-up.
 - Q or C: world-down.
-- Shift: sprint.
+- Shift: fast movement.
 - Esc: unlock pointer.
 
 ## Data contract

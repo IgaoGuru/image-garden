@@ -98,7 +98,9 @@ export function createFlyControls(
     pointer,
     update(deltaSeconds: number): void {
       if (!enabled) return;
-      const speed = moveSpeed * (keys.sprint ? sprintMultiplier : 1) * deltaSeconds;
+      const speedScale = keys.sprint ? 1 : sprintMultiplier;
+      const speed = moveSpeed * speedScale * deltaSeconds;
+      const verticalStep = verticalSpeed * speedScale * deltaSeconds;
       camera.updateMatrixWorld(true);
       camera.getWorldDirection(forwardDirection).normalize();
       rightDirection.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
@@ -111,8 +113,8 @@ export function createFlyControls(
       if (movement.lengthSq() > 0) {
         camera.position.addScaledVector(movement.normalize(), speed);
       }
-      if (keys.up) camera.position.y += verticalSpeed * deltaSeconds;
-      if (keys.down) camera.position.y -= verticalSpeed * deltaSeconds;
+      if (keys.up) camera.position.y += verticalStep;
+      if (keys.down) camera.position.y -= verticalStep;
     },
     lock(): void {
       if (enabled) pointer.lock();
