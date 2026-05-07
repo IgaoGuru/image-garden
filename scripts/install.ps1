@@ -28,11 +28,24 @@ function Show-Header {
     Write-Info ""
 }
 
+function Get-WindowsArchitecture {
+    $envArch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    if ($envArch) {
+        return $envArch.ToString().ToUpperInvariant()
+    }
+    try {
+        return ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture).ToString().ToUpperInvariant()
+    }
+    catch {
+        return "UNKNOWN"
+    }
+}
+
 function Get-AssetName {
-    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+    $arch = Get-WindowsArchitecture
     switch ($arch) {
-        "X64" { return "constellation-windows-x64.zip" }
-        default { throw "unsupported Windows architecture: $arch. Windows x64 is supported for now." }
+        { $_ -in @("AMD64", "X64") } { return "constellation-windows-x64.zip" }
+        default { throw "unsupported Windows architecture: $arch. Windows x64/AMD64 is supported for now." }
     }
 }
 
