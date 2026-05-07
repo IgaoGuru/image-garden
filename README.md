@@ -7,13 +7,13 @@ Make a private 3D map of your photos.
 macOS Apple Silicon:
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://github.com/constellation/constellation/releases/latest/download/install.sh)"
+/bin/bash -c "$(curl -fsSL https://github.com/IgaoGuru/image-garden/releases/latest/download/install.sh)"
 ```
 
 Windows x64 PowerShell:
 
 ```powershell
-irm https://github.com/constellation/constellation/releases/latest/download/install.ps1 | iex
+irm https://github.com/IgaoGuru/image-garden/releases/latest/download/install.ps1 | iex
 ```
 
 Installer downloads only user-local dependencies: `uv`, Python 3.13 managed by

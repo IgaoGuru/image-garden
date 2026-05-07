@@ -5,7 +5,7 @@ $AppName = "Constellation"
 $InstallDir = if ($env:CONSTELLATION_INSTALL_DIR) { $env:CONSTELLATION_INSTALL_DIR } else { Join-Path $HOME ".constellation" }
 $ReleaseUrl = $env:CONSTELLATION_RELEASE_URL
 $ReleaseSha256 = $env:CONSTELLATION_RELEASE_SHA256
-$ReleaseBaseUrl = if ($env:CONSTELLATION_RELEASE_BASE_URL) { $env:CONSTELLATION_RELEASE_BASE_URL } else { "https://github.com/constellation/constellation/releases/latest/download" }
+$ReleaseBaseUrl = if ($env:CONSTELLATION_RELEASE_BASE_URL) { $env:CONSTELLATION_RELEASE_BASE_URL } else { "https://github.com/IgaoGuru/image-garden/releases/latest/download" }
 $UvInstallUrl = if ($env:UV_INSTALL_URL) { $env:UV_INSTALL_URL } else { "https://astral.sh/uv/install.ps1" }
 $TempDir = $null
 

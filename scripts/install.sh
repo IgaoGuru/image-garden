@@ -6,7 +6,7 @@ DEFAULT_INSTALL_DIR="$HOME/.constellation"
 INSTALL_DIR="${CONSTELLATION_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 RELEASE_URL="${CONSTELLATION_RELEASE_URL:-}"
 RELEASE_SHA256="${CONSTELLATION_RELEASE_SHA256:-}"
-RELEASE_BASE_URL="${CONSTELLATION_RELEASE_BASE_URL:-https://github.com/constellation/constellation/releases/latest/download}"
+RELEASE_BASE_URL="${CONSTELLATION_RELEASE_BASE_URL:-https://github.com/IgaoGuru/image-garden/releases/latest/download}"
 UV_INSTALL_URL="${UV_INSTALL_URL:-https://astral.sh/uv/install.sh}"
 TMP_DIR=""
 
