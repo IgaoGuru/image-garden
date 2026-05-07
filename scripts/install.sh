@@ -2,73 +2,200 @@
 set -euo pipefail
 
 APP_NAME="Constellation"
-INSTALL_DIR="${CONSTELLATION_INSTALL_DIR:-$HOME/.constellation}"
+DEFAULT_INSTALL_DIR="$HOME/.constellation"
+INSTALL_DIR="${CONSTELLATION_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 RELEASE_URL="${CONSTELLATION_RELEASE_URL:-}"
-GIT_REPO="${CONSTELLATION_GIT_REPO:-https://github.com/constellation/constellation.git}"
+RELEASE_SHA256="${CONSTELLATION_RELEASE_SHA256:-}"
+RELEASE_BASE_URL="${CONSTELLATION_RELEASE_BASE_URL:-https://github.com/constellation/constellation/releases/latest/download}"
+UV_INSTALL_URL="${UV_INSTALL_URL:-https://astral.sh/uv/install.sh}"
+TMP_DIR=""
 
-printf '✦ %s installer\n\n' "$APP_NAME"
-printf 'Install directory: %s\n' "$INSTALL_DIR"
+cleanup() {
+  if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
+    rm -rf "$TMP_DIR"
+  fi
+}
+trap cleanup EXIT
 
-need_cmd() {
-  command -v "$1" >/dev/null 2>&1
+say() { printf '%s\n' "$*"; }
+err() { printf 'error: %s\n' "$*" >&2; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+header() {
+  printf '\033[2J\033[H' 2>/dev/null || true
+  say "✦ $APP_NAME installer"
+  say "Install folder: $INSTALL_DIR"
+  say ""
+}
+
+platform_asset_name() {
+  os_name="$(uname -s)"
+  arch_name="$(uname -m)"
+  case "$os_name" in
+    Darwin)
+      case "$arch_name" in
+        arm64) say "constellation-macos-arm64.tar.gz" ;;
+        *) err "unsupported macOS architecture: $arch_name. Apple Silicon macOS is supported for now."; exit 1 ;;
+      esac
+      ;;
+    *) err "unsupported OS: $os_name. Use scripts/install.ps1 on Windows."; exit 1 ;;
+  esac
+}
+
+ensure_downloader() {
+  if have curl || have wget; then
+    return
+  fi
+  err "need curl or wget to download $APP_NAME"
+  exit 1
+}
+
+download_to() {
+  url="$1"
+  output="$2"
+  if have curl; then
+    curl -fL --retry 3 --connect-timeout 20 "$url" -o "$output"
+  else
+    wget -O "$output" "$url"
+  fi
 }
 
 install_uv() {
-  if need_cmd uv; then
-    printf '✓ uv found: %s\n' "$(command -v uv)"
+  if have uv; then
+    say "✓ uv found: $(command -v uv)"
     return
   fi
-  printf 'Installing uv…\n'
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  if [ -x "$HOME/.local/bin/uv" ] || [ -x "$HOME/.cargo/bin/uv" ]; then
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    if have uv; then
+      say "✓ uv found: $(command -v uv)"
+      return
+    fi
+  fi
+  say "Installing uv runtime manager…"
+  if have curl; then
+    curl -LsSf "$UV_INSTALL_URL" | sh
+  else
+    wget -qO- "$UV_INSTALL_URL" | sh
+  fi
   export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-  if ! need_cmd uv; then
-    printf 'error: uv installation did not put uv on PATH. Restart your shell and rerun this installer.\n' >&2
+  if ! have uv; then
+    err "uv install finished, but uv is not on PATH. Restart terminal and rerun installer."
     exit 1
   fi
-  printf '✓ uv installed\n'
+  say "✓ uv installed: $(command -v uv)"
 }
 
-download_app() {
-  mkdir -p "$INSTALL_DIR"
-  if [ -n "$RELEASE_URL" ]; then
-    tmp="$(mktemp -d)"
-    printf 'Downloading Constellation release…\n'
-    curl -fL "$RELEASE_URL" -o "$tmp/constellation.tar.gz"
-    tar -xzf "$tmp/constellation.tar.gz" -C "$INSTALL_DIR" --strip-components=1
-    rm -rf "$tmp"
+load_remote_sha256() {
+  checksum_file="$1"
+  if [ -n "$RELEASE_SHA256" ]; then
     return
   fi
+  if download_to "$RELEASE_URL.sha256" "$checksum_file" >/dev/null 2>&1; then
+    RELEASE_SHA256="$(awk '{print $1}' "$checksum_file")"
+    say "✓ checksum file found"
+  fi
+}
 
-  if [ -d "$INSTALL_DIR/.git" ]; then
-    printf 'Updating existing checkout…\n'
-    git -C "$INSTALL_DIR" pull --ff-only
+verify_sha256() {
+  file="$1"
+  expected="$2"
+  if [ -z "$expected" ]; then
+    say "• checksum not provided; skipping verification"
     return
   fi
-
-  if ! need_cmd git; then
-    printf 'error: git is required when CONSTELLATION_RELEASE_URL is not set.\n' >&2
-    printf 'Use a release installer URL or install git and rerun.\n' >&2
+  if have shasum; then
+    actual="$(shasum -a 256 "$file" | awk '{print $1}')"
+  elif have sha256sum; then
+    actual="$(sha256sum "$file" | awk '{print $1}')"
+  else
+    err "checksum requested, but no shasum/sha256sum found"
     exit 1
   fi
-  printf 'Cloning Constellation…\n'
-  git clone "$GIT_REPO" "$INSTALL_DIR"
+  if [ "$actual" != "$expected" ]; then
+    err "checksum mismatch"
+    err "expected: $expected"
+    err "actual:   $actual"
+    exit 1
+  fi
+  say "✓ checksum verified"
 }
 
-install_uv
-download_app
+validate_extracted_release() {
+  extracted="$1"
+  for required in studio viewer-dist playview-dist scripts/install_tui.py; do
+    if [ ! -e "$extracted/$required" ]; then
+      err "release missing $required"
+      exit 1
+    fi
+  done
+}
 
-cd "$INSTALL_DIR"
-printf 'Preparing local Python environment…\n'
-uv --directory studio sync --inexact --extra onnx
+install_extracted_release() {
+  extracted="$1"
+  parent="$(dirname "$INSTALL_DIR")"
+  backup="$TMP_DIR/previous-install"
+  mkdir -p "$parent"
+  if [ -e "$INSTALL_DIR" ]; then
+    mv "$INSTALL_DIR" "$backup"
+  fi
+  if ! mv "$extracted" "$INSTALL_DIR"; then
+    if [ -e "$backup" ]; then
+      mv "$backup" "$INSTALL_DIR"
+    fi
+    err "failed to install app files"
+    exit 1
+  fi
+}
 
-if [ -f package.json ] && need_cmd pnpm; then
-  printf 'Building web assets…\n'
-  pnpm install --frozen-lockfile
-  pnpm --filter @constellation/viewer build
-  pnpm --filter @constellation/playview build
-else
-  printf 'Web build skipped; using bundled dist assets if present.\n'
-fi
+download_release() {
+  asset_name="$(platform_asset_name)"
+  if [ -z "$RELEASE_URL" ]; then
+    RELEASE_URL="$RELEASE_BASE_URL/$asset_name"
+  fi
+  TMP_DIR="$(mktemp -d)"
+  archive="$TMP_DIR/$asset_name"
+  say "Downloading $APP_NAME release…"
+  say "$RELEASE_URL"
+  download_to "$RELEASE_URL" "$archive"
+  load_remote_sha256 "$TMP_DIR/$asset_name.sha256"
+  verify_sha256 "$archive" "$RELEASE_SHA256"
+  say "Installing app files…"
+  extract_dir="$TMP_DIR/extract"
+  mkdir -p "$extract_dir"
+  tar -xzf "$archive" -C "$extract_dir"
+  extracted="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  if [ -z "$extracted" ]; then
+    err "release archive did not contain an app directory"
+    exit 1
+  fi
+  validate_extracted_release "$extracted"
+  install_extracted_release "$extracted"
+}
 
-printf '\nStarting Constellation…\n'
-uv --project studio run constellation-app "$@"
+run_tui() {
+  tui="$INSTALL_DIR/scripts/install_tui.py"
+  if [ ! -f "$tui" ]; then
+    err "installer TUI missing: $tui"
+    exit 1
+  fi
+  say "Starting installer UI…"
+  if [ -t 0 ]; then
+    uv run --no-project --python 3.13 "$tui" --app-dir "$INSTALL_DIR" "$@"
+  elif ( : </dev/tty ) 2>/dev/null; then
+    uv run --no-project --python 3.13 "$tui" --app-dir "$INSTALL_DIR" "$@" </dev/tty
+  else
+    say "No interactive terminal found; using recommended defaults."
+    uv run --no-project --python 3.13 "$tui" --app-dir "$INSTALL_DIR" --recommended "$@"
+  fi
+}
+
+main() {
+  header
+  ensure_downloader
+  install_uv
+  download_release
+  run_tui "$@"
+}
+
+main "$@"
