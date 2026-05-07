@@ -27,8 +27,8 @@ option.
 
 Installer downloads only user-local dependencies: `uv`, Python 3.13 managed by
 `uv`, Image Garden release files, Python runtime wheels, and the local ONNX
-image model. No Homebrew, Python, Node, pnpm, git, Xcode, or admin password
-required.
+image model. The app download is small; the model downloads separately during
+setup. No Homebrew, Python, Node, pnpm, git, Xcode, or admin password required.
 
 ## Development
 

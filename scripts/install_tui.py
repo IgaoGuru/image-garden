@@ -336,6 +336,21 @@ def find_uv() -> str | None:
     return None
 
 
+def default_app_data_dir() -> Path:
+    """Return default app data directory used by constellation-app."""
+    if os.name == "nt":
+        root = os.environ.get("LOCALAPPDATA") or str(
+            Path.home() / "AppData" / "Local"
+        )
+        return Path(root) / APP_NAME
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_NAME
+    root = os.environ.get("XDG_DATA_HOME") or str(
+        Path.home() / ".local" / "share"
+    )
+    return Path(root) / "constellation"
+
+
 def app_paths(app_dir: Path) -> AppPaths:
     """Build path set."""
     resolved = app_dir.expanduser().resolve()
@@ -344,7 +359,7 @@ def app_paths(app_dir: Path) -> AppPaths:
         studio_dir=resolved / STUDIO_DIR,
         viewer_dist=resolved / VIEWER_DIST,
         playview_dist=resolved / PLAYVIEW_DIST,
-        model_path=resolved / MODEL_RELATIVE_PATH,
+        model_path=default_app_data_dir() / MODEL_RELATIVE_PATH,
     )
 
 
@@ -561,7 +576,9 @@ def launch_app(
         "--playview-dist",
         str(paths.playview_dist),
     ]
-    if not embedding_enabled:
+    if embedding_enabled:
+        command.extend(["--onnx-model", str(paths.model_path)])
+    else:
         command.extend(["--embedding-engine", "none"])
     code = run_command(command, cwd=paths.app_dir)
     pause_before_exit()
@@ -575,7 +592,20 @@ def write_launcher(
     embedding_enabled: bool,
 ) -> None:
     """Write local launch helper."""
-    embedding_args = "" if embedding_enabled else "--embedding-engine none "
+    embedding_args = (
+        f"--onnx-model {sh_quote(str(paths.model_path))} "
+        if embedding_enabled and os.name != "nt"
+        else ""
+        if embedding_enabled
+        else "--embedding-engine none "
+    )
+    ps_embedding_args = (
+        f"--onnx-model {quote_ps(str(paths.model_path))} "
+        if embedding_enabled and os.name == "nt"
+        else ""
+        if embedding_enabled
+        else "--embedding-engine none "
+    )
     if os.name == "nt":
         launcher = paths.app_dir / "Constellation.ps1"
         launcher.write_text(
@@ -583,7 +613,7 @@ def write_launcher(
             "$Root = Split-Path -Parent $MyInvocation.MyCommand.Path\n"
             f'& {quote_ps(uv_path)} --project (Join-Path $Root "studio") '
             "run --no-dev constellation-app "
-            f"{embedding_args}"
+            f"{ps_embedding_args}"
             '--viewer-dist (Join-Path $Root "viewer-dist") '
             '--playview-dist (Join-Path $Root "playview-dist") @args\n',
             encoding="utf-8",

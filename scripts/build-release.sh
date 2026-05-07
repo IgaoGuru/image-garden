@@ -17,20 +17,13 @@ pnpm install --frozen-lockfile
 pnpm --filter @constellation/viewer build
 pnpm --filter @constellation/playview build
 
-if [ ! -f models/clip-image-encoder.onnx ]; then
-  printf 'warning: models/clip-image-encoder.onnx not found.\n'
-  printf '         Run `pnpm studio:download-onnx` before a consumer release to bundle default semantic embeddings.\n'
-fi
+printf 'ONNX model is not bundled; installer downloads it to app data on first run.\n'
 
 printf 'Preparing Python package lock/environment metadata…\n'
 uv --directory studio lock
 
 printf 'Staging release files…\n'
 mkdir -p "$STAGE/studio" "$STAGE/viewer-dist" "$STAGE/playview-dist" "$STAGE/scripts"
-if [ -d models ]; then
-  mkdir -p "$STAGE/models"
-  rsync -a models/ "$STAGE/models/"
-fi
 rsync -a \
   --exclude '.venv' \
   --exclude '.pytest_cache' \
