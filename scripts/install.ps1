@@ -1,9 +1,5 @@
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$InstallerArgs
-)
-
 $ErrorActionPreference = "Stop"
+$InstallerArgs = @($args)
 
 $AppName = "Constellation"
 $InstallDir = if ($env:CONSTELLATION_INSTALL_DIR) { $env:CONSTELLATION_INSTALL_DIR } else { Join-Path $HOME ".constellation" }

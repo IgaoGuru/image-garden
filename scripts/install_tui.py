@@ -17,7 +17,8 @@ import platform
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
@@ -82,12 +83,41 @@ class CheckResult:
     detail: str
 
 
+@dataclass(frozen=True)
+class SelectOption:
+    """One interactive selector row."""
+
+    label: str
+    hint: str = ""
+
+
+def enable_windows_virtual_terminal() -> bool:
+    """Enable ANSI escape sequences in classic Windows consoles."""
+    if os.name != "nt" or not sys.stdout.isatty():
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.GetStdHandle(-11)
+        mode = wintypes.DWORD()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        enable_vt = 0x0004
+        return bool(kernel32.SetConsoleMode(handle, mode.value | enable_vt))
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 def supports_color() -> bool:
     """Return whether ANSI colors should be emitted."""
     if os.environ.get("NO_COLOR"):
         return False
     if os.name == "nt":
-        return bool(os.environ.get("WT_SESSION") or os.environ.get("TERM"))
+        return enable_windows_virtual_terminal() or bool(
+            os.environ.get("WT_SESSION") or os.environ.get("TERM")
+        )
     return sys.stdout.isatty()
 
 
@@ -125,13 +155,141 @@ def prompt(default: str = "") -> str:
         return ""
 
 
+@contextmanager
+def raw_terminal() -> Generator[None]:
+    """Temporarily put stdin in raw mode when possible."""
+    if os.name == "nt" or not sys.stdin.isatty():
+        yield
+        return
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        yield
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def read_windows_key() -> str:
+    """Read one Windows navigation key."""
+    import msvcrt
+
+    first = msvcrt.getwch()
+    if first in {"\x00", "à"}:
+        second = msvcrt.getwch()
+        return {"H": "up", "P": "down"}.get(second, "")
+    return {"\r": "enter", "\x03": "ctrl-c"}.get(first, first.lower())
+
+
+def read_posix_key() -> str:
+    """Read one POSIX navigation key."""
+    first = sys.stdin.read(1)
+    if first == "\x1b":
+        rest = sys.stdin.read(2)
+        return {"[A": "up", "[B": "down"}.get(rest, "escape")
+    return {"\x03": "ctrl-c", "\r": "enter", "\n": "enter"}.get(
+        first, first.lower()
+    )
+
+
+def read_key() -> str:
+    """Read one navigation key."""
+    return read_windows_key() if os.name == "nt" else read_posix_key()
+
+
+def clear_lines(count: int) -> None:
+    """Clear the previous rendered prompt."""
+    if count <= 0:
+        return
+    print(f"\033[{count}A", end="")
+    for _ in range(count):
+        print("\033[2K\033[1B", end="")
+    print(f"\033[{count}A", end="")
+
+
+def select_index(
+    message: str,
+    options: Sequence[SelectOption],
+    *,
+    default: int = 0,
+) -> int | None:
+    """Select one option using arrow keys, clack-style."""
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return default
+    cursor = default
+    rendered = 0
+    with raw_terminal():
+        while True:
+            clear_lines(rendered)
+            lines = [
+                f"{style('◆', Ansi.green)}  {style(message, Ansi.bold)}",
+                f"{style('│', Ansi.dim)}  {style('↑↓ move, enter confirm, q cancel', Ansi.dim)}",
+                f"{style('│', Ansi.dim)}",
+            ]
+            for index, option in enumerate(options):
+                active = index == cursor
+                marker = style("❯", Ansi.cyan) if active else " "  # noqa: RUF001
+                radio = (
+                    style("●", Ansi.green) if active else style("○", Ansi.dim)
+                )
+                label = (
+                    style(option.label, Ansi.bold) if active else option.label
+                )
+                hint = (
+                    f" {style(option.hint, Ansi.dim)}" if option.hint else ""
+                )
+                lines.append(
+                    f"{style('│', Ansi.dim)} {marker} {radio} {label}{hint}"
+                )
+            lines.append(style("└", Ansi.dim))
+            print("\n".join(lines))
+            rendered = len(lines)
+            key = read_key()
+            if key == "up":
+                cursor = (cursor - 1) % len(options)
+            elif key == "down":
+                cursor = (cursor + 1) % len(options)
+            elif key in {"enter", " "}:
+                clear_lines(rendered)
+                print(f"{style('◇', Ansi.green)}  {style(message, Ansi.bold)}")
+                print(f"{style('│', Ansi.dim)}  {options[cursor].label}")
+                print(style("└", Ansi.dim))
+                return cursor
+            elif key in {"q", "escape", "ctrl-c"}:
+                clear_lines(rendered)
+                print(f"{style('■', Ansi.red)}  {style(message, Ansi.bold)}")
+                print(
+                    f"{style('│', Ansi.dim)}  {style('Cancelled', Ansi.dim)}"
+                )
+                print(style("└", Ansi.dim))
+                return None
+
+
 def prompt_yes_no(question: str, *, default: bool) -> bool:
     """Ask yes/no question."""
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        selected = select_index(
+            question,
+            [SelectOption("Yes"), SelectOption("No")],
+            default=0 if default else 1,
+        )
+        if selected is not None:
+            return selected == 0
     suffix = "Y/n" if default else "y/N"
     response = prompt(f"{question} [{suffix}] ")
     if not response:
         return default
     return response.lower() in {"y", "yes"}
+
+
+def pause_before_exit() -> None:
+    """Keep terminal visible after installer completes."""
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        print()
+        prompt("Press Enter to return to your terminal… ")
 
 
 def run_command(
@@ -242,32 +400,37 @@ def choose_action(paths: AppPaths) -> InstallOptions:
     """Ask user for install mode."""
     header("Installer")
     print(f"Install folder: {style(str(paths.app_dir), Ansi.bold)}\n")
-    print("Choose path:")
-    print("  1. Recommended install / update")
-    print("  2. Advanced options")
-    print("  3. Repair install")
-    print("  4. Uninstall app files")
-    print("  5. Quit")
-    choice = prompt("\nPress Enter for 1: ") or "1"
-    if choice == "2":
+    selected = select_index(
+        "Choose install path",
+        [
+            SelectOption(
+                "Recommended install / update", "best for most people"
+            ),
+            SelectOption("Advanced options", "choose model/download behavior"),
+            SelectOption("Repair install", "recreate Python environment"),
+            SelectOption("Uninstall app files", "keeps your photos"),
+            SelectOption("Quit"),
+        ],
+    )
+    if selected is None or selected == 4:
+        return InstallOptions(
+            action=Action.QUIT,
+            launch=False,
+            install_model=False,
+            reset_environment=False,
+        )
+    if selected == 1:
         return advanced_options()
-    if choice == "3":
+    if selected == 2:
         return InstallOptions(
             action=Action.REPAIR,
             launch=True,
             install_model=True,
             reset_environment=True,
         )
-    if choice == "4":
+    if selected == 3:
         return InstallOptions(
             action=Action.UNINSTALL,
-            launch=False,
-            install_model=False,
-            reset_environment=False,
-        )
-    if choice == "5":
-        return InstallOptions(
-            action=Action.QUIT,
             launch=False,
             install_model=False,
             reset_environment=False,
@@ -400,7 +563,9 @@ def launch_app(
     ]
     if not embedding_enabled:
         command.extend(["--embedding-engine", "none"])
-    return run_command(command, cwd=paths.app_dir)
+    code = run_command(command, cwd=paths.app_dir)
+    pause_before_exit()
+    return code
 
 
 def write_launcher(
@@ -456,9 +621,11 @@ def uninstall(paths: AppPaths) -> int:
         "Photo library untouched. App data/cache may remain in system app data."
     )
     if not prompt_yes_no("Continue?", default=False):
+        pause_before_exit()
         return 0
     shutil.rmtree(paths.app_dir)
     print(style("Removed Constellation app files.", Ansi.green))
+    pause_before_exit()
     return 0
 
 
@@ -502,6 +669,7 @@ def install(paths: AppPaths, options: InstallOptions) -> int:
     header("Done")
     print(style("Install complete.", Ansi.green, Ansi.bold))
     print(f"Run later from: {paths.app_dir}")
+    pause_before_exit()
     return 0
 
 
