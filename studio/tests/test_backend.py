@@ -5,6 +5,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,23 @@ from constellation_studio.source_adapters import FolderSourceAdapter
 def create_image(path: Path, color: tuple[int, int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (8, 6), color).save(path)
+
+
+class BatchLimitedEmbedder:
+    """Fake provider that simulates engines rejecting oversized batches."""
+
+    cache_namespace = "batch-limited"
+
+    def __init__(self, max_batch: int) -> None:
+        self.max_batch = max_batch
+        self.calls: list[int] = []
+
+    def embed_images(self, paths: Sequence[Path]) -> list[tuple[float, ...]]:
+        self.calls.append(len(paths))
+        if len(paths) > self.max_batch:
+            msg = "batch too large"
+            raise RuntimeError(msg)
+        return [(float(path.stat().st_size),) for path in paths]
 
 
 def create_playview_dist(path: Path) -> Path:
@@ -130,6 +148,30 @@ def test_import_folder_can_use_embedding_provider_for_layout(
         (-120.0, 0.0, 0.0),
         (120.0, 0.0, 0.0),
     }
+
+
+def test_import_folder_splits_embedding_batches_on_runtime_failure(
+    tmp_path: Path,
+) -> None:
+    for index, color in enumerate(
+        [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)],
+    ):
+        create_image(tmp_path / "photos" / f"{index}.jpg", color)
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+    embedder = BatchLimitedEmbedder(max_batch=2)
+
+    result = import_folder(
+        tmp_path / "photos",
+        store=store,
+        asset_root=paths.asset_root,
+        embedding_provider=embedder,
+        batch_size=4,
+    )
+
+    assert result.imported == 4
+    assert store.count_assets() == 4
+    assert embedder.calls == [4, 2, 2]
 
 
 def test_import_studio_dataset_persists_runtime_assets(

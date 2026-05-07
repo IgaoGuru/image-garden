@@ -242,12 +242,7 @@ def positions_for_sanitized_records(
             message=f"Reused {completed} cached embeddings",
         )
     for batch in batched(missing, batch_size):
-        vectors = provider.embed_images(
-            [record.image_path for record in batch]
-        )
-        if len(vectors) != len(batch):
-            msg = "embedding provider returned the wrong number of vectors"
-            raise RuntimeError(msg)
+        vectors = embed_sanitized_batch(provider, batch)
         for record, vector in zip(batch, vectors, strict=True):
             cache.set(record.id, vector)
             embeddings[record.id] = vector
@@ -273,6 +268,29 @@ def positions_for_sanitized_records(
         message="Built 3D layout",
     )
     return positions
+
+
+def embed_sanitized_batch(
+    provider: EmbeddingProvider,
+    batch: Sequence[SanitizedImage],
+) -> list[Embedding]:
+    """Embed records, splitting failed large batches to preserve compatibility."""
+    try:
+        vectors = provider.embed_images(
+            [record.image_path for record in batch]
+        )
+    except RuntimeError:
+        if len(batch) <= 1:
+            raise
+        midpoint = len(batch) // 2
+        return [
+            *embed_sanitized_batch(provider, batch[:midpoint]),
+            *embed_sanitized_batch(provider, batch[midpoint:]),
+        ]
+    if len(vectors) != len(batch):
+        msg = "embedding provider returned the wrong number of vectors"
+        raise RuntimeError(msg)
+    return vectors
 
 
 def batched[T](items: Sequence[T], batch_size: int) -> list[Sequence[T]]:
