@@ -2,24 +2,33 @@
 
 Make a private 3D map of your photos.
 
-## One-command install
+## Install
 
-macOS Apple Silicon:
+### macOS Apple Silicon
+
+1. Open **Terminal**.
+2. Paste and run:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://github.com/IgaoGuru/image-garden/releases/latest/download/install.sh)"
 ```
 
-Windows x64 PowerShell:
+### Windows x64
+
+1. Open **PowerShell**.
+2. Paste and run:
 
 ```powershell
 irm https://github.com/IgaoGuru/image-garden/releases/latest/download/install.ps1 | iex
 ```
 
+Then use the arrow keys in the installer and press **Enter** on the recommended
+option.
+
 Installer downloads only user-local dependencies: `uv`, Python 3.13 managed by
-`uv`, Constellation release files, Python runtime wheels, and the local ONNX
-image model when not bundled. No Homebrew, Python, Node, pnpm, git, Xcode, or
-admin password required for the consumer path.
+`uv`, Image Garden release files, Python runtime wheels, and the local ONNX
+image model. No Homebrew, Python, Node, pnpm, git, Xcode, or admin password
+required.
 
 ## Development
 
