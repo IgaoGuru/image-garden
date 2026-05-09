@@ -24,7 +24,7 @@ from enum import StrEnum
 from pathlib import Path
 
 APP_NAME = "Image Garden"
-MODEL_RELATIVE_PATH = Path("models") / "clip-image-encoder.onnx"
+MODEL_RELATIVE_PATH = Path("models") / "mobileclip-s1-vision.onnx"
 VIEWER_DIST = Path("viewer-dist")
 PLAYVIEW_DIST = Path("playview-dist")
 STUDIO_DIR = Path("studio")
@@ -142,9 +142,7 @@ def header(title: str) -> None:
     clear_screen()
     print(style("✦ Image Garden", Ansi.bold, Ansi.cyan))
     print(style(title, Ansi.bold))
-    print(
-        style("Private photo map. Local-first. No cloud account.\n", Ansi.dim)
-    )
+    print(style("Private photo map. Local-first. No cloud account.\n", Ansi.dim))
 
 
 def prompt(default: str = "") -> str:
@@ -190,9 +188,7 @@ def read_posix_key() -> str:
     if first == "\x1b":
         rest = sys.stdin.read(2)
         return {"[A": "up", "[B": "down"}.get(rest, "escape")
-    return {"\x03": "ctrl-c", "\r": "enter", "\n": "enter"}.get(
-        first, first.lower()
-    )
+    return {"\x03": "ctrl-c", "\r": "enter", "\n": "enter"}.get(first, first.lower())
 
 
 def read_key() -> str:
@@ -232,18 +228,10 @@ def select_index(
             for index, option in enumerate(options):
                 active = index == cursor
                 marker = style("❯", Ansi.cyan) if active else " "  # noqa: RUF001
-                radio = (
-                    style("●", Ansi.green) if active else style("○", Ansi.dim)
-                )
-                label = (
-                    style(option.label, Ansi.bold) if active else option.label
-                )
-                hint = (
-                    f" {style(option.hint, Ansi.dim)}" if option.hint else ""
-                )
-                lines.append(
-                    f"{style('│', Ansi.dim)} {marker} {radio} {label}{hint}"
-                )
+                radio = style("●", Ansi.green) if active else style("○", Ansi.dim)
+                label = style(option.label, Ansi.bold) if active else option.label
+                hint = f" {style(option.hint, Ansi.dim)}" if option.hint else ""
+                lines.append(f"{style('│', Ansi.dim)} {marker} {radio} {label}{hint}")
             lines.append(style("└", Ansi.dim))
             print("\n".join(lines))
             rendered = len(lines)
@@ -261,9 +249,7 @@ def select_index(
             elif key in {"q", "escape", "ctrl-c"}:
                 clear_lines(rendered)
                 print(f"{style('■', Ansi.red)}  {style(message, Ansi.bold)}")
-                print(
-                    f"{style('│', Ansi.dim)}  {style('Cancelled', Ansi.dim)}"
-                )
+                print(f"{style('│', Ansi.dim)}  {style('Cancelled', Ansi.dim)}")
                 print(style("└", Ansi.dim))
                 return None
 
@@ -344,15 +330,11 @@ def default_app_data_dir() -> Path:
     if env_data:
         return Path(env_data).expanduser()
     if os.name == "nt":
-        root = os.environ.get("LOCALAPPDATA") or str(
-            Path.home() / "AppData" / "Local"
-        )
+        root = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(root) / APP_NAME
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME
-    root = os.environ.get("XDG_DATA_HOME") or str(
-        Path.home() / ".local" / "share"
-    )
+    root = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
     return Path(root) / "image-garden"
 
 
@@ -405,7 +387,7 @@ def check_install(paths: AppPaths, uv_path: str | None) -> list[CheckResult]:
             paths.playview_dist.is_dir(),
             str(paths.playview_dist),
         ),
-        CheckResult("ONNX model", model_ok, model_detail),
+        CheckResult("MobileCLIP-S1", model_ok, model_detail),
     ]
 
 
@@ -425,11 +407,7 @@ def print_next_step_box(command: str) -> None:
     border_bottom = "└" + "─" * inner_width + "┘"
     empty = "│" + " " * inner_width + "│"
     command_line = (
-        "│"
-        + " " * horizontal_margin
-        + command
-        + " " * horizontal_margin
-        + "│"
+        "│" + " " * horizontal_margin + command + " " * horizontal_margin + "│"
     )
     print(style("Run this next:", Ansi.green, Ansi.bold))
     print(style(border_top, Ansi.green, Ansi.bold))
@@ -448,9 +426,7 @@ def choose_action(paths: AppPaths) -> InstallOptions:
     selected = select_index(
         "Choose install path",
         [
-            SelectOption(
-                "Recommended install / update", "installs CLI; launch later"
-            ),
+            SelectOption("Recommended install / update", "installs CLI; launch later"),
             SelectOption("Install and launch now", "start app after setup"),
             SelectOption("Advanced options", "choose model/download behavior"),
             SelectOption("Repair install", "recreate Python environment"),
@@ -557,9 +533,7 @@ def sync_python_environment(
     return code == 0
 
 
-def ensure_model(
-    paths: AppPaths, uv_path: str, *, install_model: bool
-) -> bool:
+def ensure_model(paths: AppPaths, uv_path: str, *, install_model: bool) -> bool:
     """Ensure ONNX model exists, downloading when requested."""
     if not onnx_runtime_supported():
         print(
@@ -571,10 +545,10 @@ def ensure_model(
         )
         return True
     if paths.model_path.is_file():
-        print(style("\n✓ ONNX model ready", Ansi.green))
+        print(style("\n✓ MobileCLIP-S1 ONNX model ready", Ansi.green))
         return True
     if not install_model:
-        print(style("\nSkipping ONNX model download.", Ansi.yellow))
+        print(style("\nSkipping MobileCLIP-S1 model download.", Ansi.yellow))
         return True
     code = run_command(
         [
@@ -631,7 +605,7 @@ def write_launcher(
         app_launcher.write_text(
             "@echo off\r\n"
             f"set IMAGE_GARDEN_INSTALL_DIR={paths.app_dir}\r\n"
-            f"{uv_path} --project \"{paths.studio_dir}\" run --no-dev image-garden %*\r\n",
+            f'{uv_path} --project "{paths.studio_dir}" run --no-dev image-garden %*\r\n',
             encoding="utf-8",
         )
         bin_dir = default_windows_bin_dir()
@@ -644,7 +618,7 @@ def write_launcher(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f"export IMAGE_GARDEN_INSTALL_DIR={sh_quote(str(paths.app_dir))}\n"
-        f"exec {sh_quote(uv_path)} --project {sh_quote(str(paths.studio_dir))} run --no-dev image-garden \"$@\"\n"
+        f'exec {sh_quote(uv_path)} --project {sh_quote(str(paths.studio_dir))} run --no-dev image-garden "$@"\n'
     )
     app_launcher.write_text(launcher_text, encoding="utf-8")
     app_launcher.chmod(0o755)
@@ -678,9 +652,7 @@ def uninstall(paths: AppPaths) -> int:
     header("Uninstall")
     target = paths.app_dir.parent if paths.app_dir.name == "current" else paths.app_dir
     print(f"This removes app files in:\n  {target}\n")
-    print(
-        "Photo library untouched. App data/cache may remain in system app data."
-    )
+    print("Photo library untouched. App data/cache may remain in system app data.")
     if not prompt_yes_no("Continue?", default=False):
         pause_before_exit()
         return 0
@@ -740,9 +712,9 @@ def install(paths: AppPaths, options: InstallOptions) -> int:
     print()
     print("Logs:")
     print("  image-garden logs")
-    if os.name != "nt" and str(
-        Path.home() / ".local" / "bin"
-    ) not in os.environ.get("PATH", ""):
+    if os.name != "nt" and str(Path.home() / ".local" / "bin") not in os.environ.get(
+        "PATH", ""
+    ):
         print()
         print(
             style(

@@ -22,7 +22,22 @@ def test_default_app_data_dir_honors_env(
     assert default_app_data_dir() == tmp_path / "data"
 
 
-def test_find_bundled_onnx_model_checks_models_dir(tmp_path: Path) -> None:
+def test_find_bundled_onnx_model_prefers_mobileclip_s1(
+    tmp_path: Path,
+) -> None:
+    models = tmp_path / "models"
+    models.mkdir()
+    legacy = models / "clip-image-encoder.onnx"
+    mobileclip = models / "mobileclip-s1-vision.onnx"
+    legacy.write_bytes(b"legacy model")
+    mobileclip.write_bytes(b"mobileclip model")
+
+    assert find_bundled_onnx_model(tmp_path) == mobileclip.resolve()
+
+
+def test_find_bundled_onnx_model_falls_back_to_legacy_clip(
+    tmp_path: Path,
+) -> None:
     model = tmp_path / "models" / "clip-image-encoder.onnx"
     model.parent.mkdir()
     model.write_bytes(b"not a real model")

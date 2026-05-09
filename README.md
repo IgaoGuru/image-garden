@@ -40,9 +40,10 @@ image-garden uninstall
 No `.app` bundle is required. The app is CLI-managed and opens in your browser.
 
 Installer downloads only user-local dependencies: `uv`, Python 3.13 managed by
-`uv`, Image Garden release files, Python runtime wheels, and the local ONNX
-image model. The app download is small; the model downloads separately during
-setup. No Homebrew, Python, Node, pnpm, git, Xcode, or admin password required.
+`uv`, Image Garden release files, Python runtime wheels, and the local
+MobileCLIP-S1 ONNX image model. The app download is small; the model downloads
+separately during setup. No Homebrew, Python, Node, pnpm, git, Xcode, or admin
+password required.
 
 ## Development
 
@@ -52,6 +53,10 @@ pnpm build
 pnpm studio:sync
 pnpm studio:app
 ```
+
+`pnpm studio:download-onnx` downloads the default MobileCLIP-S1 ONNX image
+encoder from `Xenova/mobileclip_s1`. Legacy CLIP ViT-B/32 remains available with
+`pnpm studio:download-onnx -- --model clip-vit-base-patch32`.
 
 ### Release
 

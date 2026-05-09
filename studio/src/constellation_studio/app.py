@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import cast
 
 from constellation_studio import backend
-from constellation_studio.download_onnx import download_onnx_model
+from constellation_studio.download_onnx import (
+    DEFAULT_ONNX_OUTPUT,
+    download_onnx_model,
+)
 from constellation_studio.embed import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_MODEL,
@@ -51,6 +54,7 @@ def find_bundled_onnx_model(start: Path) -> Path | None:
         if candidate.is_file():
             return candidate
     names = (
+        DEFAULT_ONNX_OUTPUT.name,
         "clip-image-encoder.onnx",
         "openclip-image-encoder.onnx",
         "model.onnx",
@@ -207,9 +211,7 @@ def run(args: argparse.Namespace) -> int:
         ensure_onnx_runtime_available()
     if engine == "auto":
         if onnx_model is None:
-            onnx_model = download_onnx_model(
-                data_dir / "models" / "clip-image-encoder.onnx",
-            )
+            onnx_model = download_onnx_model(data_dir / DEFAULT_ONNX_OUTPUT)
         engine = "onnx"
     elif engine == "onnx" and onnx_model is None:
         print(
