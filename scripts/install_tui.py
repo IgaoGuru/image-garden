@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Friendly Constellation installer TUI.
+"""Friendly Image Garden installer TUI.
 
 This file is intentionally stdlib-only. Bootstrap scripts run it with:
 
@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 
-APP_NAME = "Constellation"
+APP_NAME = "Image Garden"
 MODEL_RELATIVE_PATH = Path("models") / "clip-image-encoder.onnx"
 VIEWER_DIST = Path("viewer-dist")
 PLAYVIEW_DIST = Path("playview-dist")
@@ -140,7 +140,7 @@ def clear_screen() -> None:
 def header(title: str) -> None:
     """Print boxed installer header."""
     clear_screen()
-    print(style("✦ Constellation", Ansi.bold, Ansi.cyan))
+    print(style("✦ Image Garden", Ansi.bold, Ansi.cyan))
     print(style(title, Ansi.bold))
     print(
         style("Private photo map. Local-first. No cloud account.\n", Ansi.dim)
@@ -337,7 +337,12 @@ def find_uv() -> str | None:
 
 
 def default_app_data_dir() -> Path:
-    """Return default app data directory used by constellation-app."""
+    """Return default app data directory used by image-garden app."""
+    env_data = os.environ.get("IMAGE_GARDEN_DATA_DIR") or os.environ.get(
+        "CONSTELLATION_DATA_DIR"
+    )
+    if env_data:
+        return Path(env_data).expanduser()
     if os.name == "nt":
         root = os.environ.get("LOCALAPPDATA") or str(
             Path.home() / "AppData" / "Local"
@@ -348,12 +353,12 @@ def default_app_data_dir() -> Path:
     root = os.environ.get("XDG_DATA_HOME") or str(
         Path.home() / ".local" / "share"
     )
-    return Path(root) / "constellation"
+    return Path(root) / "image-garden"
 
 
 def app_paths(app_dir: Path) -> AppPaths:
     """Build path set."""
-    resolved = app_dir.expanduser().resolve()
+    resolved = app_dir.expanduser()
     return AppPaths(
         app_dir=resolved,
         studio_dir=resolved / STUDIO_DIR,
@@ -411,6 +416,31 @@ def print_checks(checks: Sequence[CheckResult]) -> None:
         print(f"  {icon} {check.label:<16} {check.detail}")
 
 
+def print_next_step_box(command: str) -> None:
+    """Print the primary next step in a clear green box."""
+    horizontal_margin = 6
+    vertical_padding = 1
+    inner_width = len(command) + (horizontal_margin * 2)
+    border_top = "┌" + "─" * inner_width + "┐"
+    border_bottom = "└" + "─" * inner_width + "┘"
+    empty = "│" + " " * inner_width + "│"
+    command_line = (
+        "│"
+        + " " * horizontal_margin
+        + command
+        + " " * horizontal_margin
+        + "│"
+    )
+    print(style("Run this next:", Ansi.green, Ansi.bold))
+    print(style(border_top, Ansi.green, Ansi.bold))
+    for _ in range(vertical_padding):
+        print(style(empty, Ansi.green, Ansi.bold))
+    print(style(command_line, Ansi.green, Ansi.bold))
+    for _ in range(vertical_padding):
+        print(style(empty, Ansi.green, Ansi.bold))
+    print(style(border_bottom, Ansi.green, Ansi.bold))
+
+
 def choose_action(paths: AppPaths) -> InstallOptions:
     """Ask user for install mode."""
     header("Installer")
@@ -419,15 +449,16 @@ def choose_action(paths: AppPaths) -> InstallOptions:
         "Choose install path",
         [
             SelectOption(
-                "Recommended install / update", "best for most people"
+                "Recommended install / update", "installs CLI; launch later"
             ),
+            SelectOption("Install and launch now", "start app after setup"),
             SelectOption("Advanced options", "choose model/download behavior"),
             SelectOption("Repair install", "recreate Python environment"),
             SelectOption("Uninstall app files", "keeps your photos"),
             SelectOption("Quit"),
         ],
     )
-    if selected is None or selected == 4:
+    if selected is None or selected == 5:
         return InstallOptions(
             action=Action.QUIT,
             launch=False,
@@ -435,15 +466,22 @@ def choose_action(paths: AppPaths) -> InstallOptions:
             reset_environment=False,
         )
     if selected == 1:
-        return advanced_options()
+        return InstallOptions(
+            action=Action.INSTALL,
+            launch=True,
+            install_model=True,
+            reset_environment=False,
+        )
     if selected == 2:
+        return advanced_options()
+    if selected == 3:
         return InstallOptions(
             action=Action.REPAIR,
-            launch=True,
+            launch=False,
             install_model=True,
             reset_environment=True,
         )
-    if selected == 3:
+    if selected == 4:
         return InstallOptions(
             action=Action.UNINSTALL,
             launch=False,
@@ -452,7 +490,7 @@ def choose_action(paths: AppPaths) -> InstallOptions:
         )
     return InstallOptions(
         action=Action.INSTALL,
-        launch=True,
+        launch=False,
         install_model=True,
         reset_environment=False,
     )
@@ -465,7 +503,7 @@ def advanced_options() -> InstallOptions:
         "Download local image-understanding model if missing?",
         default=True,
     )
-    launch = prompt_yes_no("Launch Constellation after install?", default=True)
+    launch = prompt_yes_no("Launch Image Garden after install?", default=False)
     reset_environment = prompt_yes_no(
         "Recreate Python environment from scratch?",
         default=False,
@@ -560,26 +598,21 @@ def launch_app(
     *,
     embedding_enabled: bool,
 ) -> int:
-    """Launch Constellation app."""
+    """Launch Image Garden app."""
     header("Ready")
     print(style("Install complete.", Ansi.green, Ansi.bold))
-    print("Opening local app in browser. Keep this window open.\n")
+    print("Starting local app in this terminal and opening browser.\n")
     command = [
         uv_path,
         "--project",
         str(paths.studio_dir),
         "run",
         "--no-dev",
-        "constellation-app",
-        "--viewer-dist",
-        str(paths.viewer_dist),
-        "--playview-dist",
-        str(paths.playview_dist),
+        "image-garden",
+        "start",
     ]
-    if embedding_enabled:
-        command.extend(["--onnx-model", str(paths.model_path)])
-    else:
-        command.extend(["--embedding-engine", "none"])
+    if not embedding_enabled:
+        print(style("Embeddings disabled on this platform.", Ansi.yellow))
     code = run_command(command, cwd=paths.app_dir)
     pause_before_exit()
     return code
@@ -591,46 +624,43 @@ def write_launcher(
     *,
     embedding_enabled: bool,
 ) -> None:
-    """Write local launch helper."""
-    embedding_args = (
-        f"--onnx-model {sh_quote(str(paths.model_path))} "
-        if embedding_enabled and os.name != "nt"
-        else ""
-        if embedding_enabled
-        else "--embedding-engine none "
-    )
-    ps_embedding_args = (
-        f"--onnx-model {quote_ps(str(paths.model_path))} "
-        if embedding_enabled and os.name == "nt"
-        else ""
-        if embedding_enabled
-        else "--embedding-engine none "
-    )
+    """Write stable CLI launch helpers."""
+    del embedding_enabled
     if os.name == "nt":
-        launcher = paths.app_dir / "Constellation.ps1"
-        launcher.write_text(
-            '$ErrorActionPreference = "Stop"\n'
-            "$Root = Split-Path -Parent $MyInvocation.MyCommand.Path\n"
-            f'& {quote_ps(uv_path)} --project (Join-Path $Root "studio") '
-            "run --no-dev constellation-app "
-            f"{ps_embedding_args}"
-            '--viewer-dist (Join-Path $Root "viewer-dist") '
-            '--playview-dist (Join-Path $Root "playview-dist") @args\n',
+        app_launcher = paths.app_dir / "Image Garden.cmd"
+        app_launcher.write_text(
+            "@echo off\r\n"
+            f"set IMAGE_GARDEN_INSTALL_DIR={paths.app_dir}\r\n"
+            f"{uv_path} --project \"{paths.studio_dir}\" run --no-dev image-garden %*\r\n",
             encoding="utf-8",
         )
+        bin_dir = default_windows_bin_dir()
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        shim = bin_dir / "image-garden.cmd"
+        shim.write_text(app_launcher.read_text(encoding="utf-8"), encoding="utf-8")
         return
-    launcher = paths.app_dir / "constellation"
-    launcher.write_text(
+    app_launcher = paths.app_dir / "image-garden"
+    launcher_text = (
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
-        f'exec {sh_quote(uv_path)} --project "$ROOT/studio" run --no-dev constellation-app '
-        f"{embedding_args}"
-        '--viewer-dist "$ROOT/viewer-dist" '
-        '--playview-dist "$ROOT/playview-dist" "$@"\n',
-        encoding="utf-8",
+        f"export IMAGE_GARDEN_INSTALL_DIR={sh_quote(str(paths.app_dir))}\n"
+        f"exec {sh_quote(uv_path)} --project {sh_quote(str(paths.studio_dir))} run --no-dev image-garden \"$@\"\n"
     )
-    launcher.chmod(0o755)
+    app_launcher.write_text(launcher_text, encoding="utf-8")
+    app_launcher.chmod(0o755)
+    bin_dir = Path.home() / ".local" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    shim = bin_dir / "image-garden"
+    shim.write_text(launcher_text, encoding="utf-8")
+    shim.chmod(0o755)
+
+
+def default_windows_bin_dir() -> Path:
+    """Return Windows user-local bin dir for shim."""
+    root = os.environ.get("LOCALAPPDATA")
+    if root:
+        return Path(root) / "Image Garden" / "bin"
+    return Path.home() / ".image-garden" / "bin"
 
 
 def sh_quote(value: str) -> str:
@@ -646,15 +676,16 @@ def quote_ps(value: str) -> str:
 def uninstall(paths: AppPaths) -> int:
     """Remove app files after confirmation."""
     header("Uninstall")
-    print(f"This removes app files in:\n  {paths.app_dir}\n")
+    target = paths.app_dir.parent if paths.app_dir.name == "current" else paths.app_dir
+    print(f"This removes app files in:\n  {target}\n")
     print(
         "Photo library untouched. App data/cache may remain in system app data."
     )
     if not prompt_yes_no("Continue?", default=False):
         pause_before_exit()
         return 0
-    shutil.rmtree(paths.app_dir)
-    print(style("Removed Constellation app files.", Ansi.green))
+    shutil.rmtree(target)
+    print(style("Removed Image Garden app files.", Ansi.green))
     pause_before_exit()
     return 0
 
@@ -697,20 +728,43 @@ def install(paths: AppPaths, options: InstallOptions) -> int:
             embedding_enabled=embedding_enabled,
         )
     header("Done")
-    print(style("Install complete.", Ansi.green, Ansi.bold))
-    print(f"Run later from: {paths.app_dir}")
+    print(style("Image Garden installed.", Ansi.green, Ansi.bold))
+    print()
+    print_next_step_box("image-garden start")
+    print()
+    print("Stop:")
+    print("  Press Ctrl+C in the terminal running image-garden start")
+    print()
+    print("Open later:")
+    print("  image-garden open")
+    print()
+    print("Logs:")
+    print("  image-garden logs")
+    if os.name != "nt" and str(
+        Path.home() / ".local" / "bin"
+    ) not in os.environ.get("PATH", ""):
+        print()
+        print(
+            style(
+                "Note: ~/.local/bin is not on PATH in this terminal.",
+                Ansi.yellow,
+            )
+        )
+        direct = Path.home() / ".local" / "bin" / "image-garden"
+        print(f"You can run directly: {direct} start")
+        print("Background mode is also available: image-garden start --background")
     pause_before_exit()
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI parser."""
-    parser = argparse.ArgumentParser(description="Constellation installer TUI")
+    parser = argparse.ArgumentParser(description="Image Garden installer TUI")
     parser.add_argument(
         "--app-dir",
         type=Path,
         required=True,
-        help="Extracted Constellation app directory.",
+        help="Extracted Image Garden app directory.",
     )
     parser.add_argument(
         "--recommended",
@@ -718,9 +772,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run recommended install without prompts.",
     )
     parser.add_argument(
+        "--launch",
+        action="store_true",
+        help="Launch after install.",
+    )
+    parser.add_argument(
         "--no-launch",
         action="store_true",
-        help="Do not launch after install.",
+        help="Do not launch after install (default).",
     )
     return parser
 
@@ -733,12 +792,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if bool(args.recommended):
         options = InstallOptions(
             action=Action.INSTALL,
-            launch=not bool(args.no_launch),
+            launch=bool(args.launch) and not bool(args.no_launch),
             install_model=True,
             reset_environment=False,
         )
     else:
         options = choose_action(paths)
+    if bool(args.launch):
+        options = replace(options, launch=True)
     if bool(args.no_launch):
         options = replace(options, launch=False)
     if options.action == Action.QUIT:

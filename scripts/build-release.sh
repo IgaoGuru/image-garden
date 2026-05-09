@@ -2,11 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${CONSTELLATION_VERSION:-dev}"
-OUT_DIR="${CONSTELLATION_RELEASE_DIR:-$ROOT/dist-release}"
-STAGE="$OUT_DIR/constellation-$VERSION"
-MACOS_ARCHIVE="$OUT_DIR/constellation-macos-arm64.tar.gz"
-WINDOWS_ARCHIVE="$OUT_DIR/constellation-windows-x64.zip"
+DEFAULT_VERSION="$(cd "$ROOT" && git describe --tags --always --dirty 2>/dev/null || printf 'dev')"
+VERSION="${IMAGE_GARDEN_VERSION:-${CONSTELLATION_VERSION:-$DEFAULT_VERSION}}"
+OUT_DIR="${IMAGE_GARDEN_RELEASE_DIR:-${CONSTELLATION_RELEASE_DIR:-$ROOT/dist-release}}"
+STAGE="$OUT_DIR/image-garden-$VERSION"
+MACOS_ARCHIVE="$OUT_DIR/image-garden-macos-arm64.tar.gz"
+WINDOWS_ARCHIVE="$OUT_DIR/image-garden-windows-x64.zip"
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
@@ -33,44 +34,72 @@ rsync -a packages/viewer/dist/ "$STAGE/viewer-dist/"
 rsync -a playview/dist/ "$STAGE/playview-dist/"
 cp scripts/install.sh scripts/install.ps1 scripts/install_tui.py "$STAGE/scripts/"
 cp README.md spec.md package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
+printf '%s\n' "$VERSION" > "$STAGE/VERSION"
 
-cat > "$STAGE/constellation" <<'SH'
+cat > "$STAGE/image-garden" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec uv --project "$ROOT/studio" run --no-dev constellation-app --viewer-dist "$ROOT/viewer-dist" --playview-dist "$ROOT/playview-dist" "$@"
+export IMAGE_GARDEN_INSTALL_DIR="$ROOT"
+exec uv --project "$ROOT/studio" run --no-dev image-garden "$@"
 SH
-chmod +x "$STAGE/constellation"
+chmod +x "$STAGE/image-garden"
 
-cat > "$STAGE/constellation.ps1" <<'PS1'
-$ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-uv --project (Join-Path $Root "studio") run --no-dev constellation-app --viewer-dist (Join-Path $Root "viewer-dist") --playview-dist (Join-Path $Root "playview-dist") @args
-PS1
+cat > "$STAGE/Image Garden.cmd" <<'CMD'
+@echo off
+set Root=%~dp0
+set IMAGE_GARDEN_INSTALL_DIR=%Root%
+uv --project "%Root%studio" run --no-dev image-garden %*
+CMD
 
 printf 'Writing archives…\n'
-tar -C "$OUT_DIR" -czf "$MACOS_ARCHIVE" "constellation-$VERSION"
+tar -C "$OUT_DIR" -czf "$MACOS_ARCHIVE" "image-garden-$VERSION"
 if command -v ditto >/dev/null 2>&1; then
   ditto -c -k --sequesterRsrc --keepParent "$STAGE" "$WINDOWS_ARCHIVE"
 elif command -v zip >/dev/null 2>&1; then
-  (cd "$OUT_DIR" && zip -qr "$WINDOWS_ARCHIVE" "constellation-$VERSION")
+  (cd "$OUT_DIR" && zip -qr "$WINDOWS_ARCHIVE" "image-garden-$VERSION")
 else
   printf 'warning: zip/ditto not found; Windows zip archive skipped.\n'
 fi
 cp scripts/install.sh "$OUT_DIR/install.sh"
 cp scripts/install.ps1 "$OUT_DIR/install.ps1"
-write_sha256() {
+sha256_value() {
   file="$1"
   if command -v shasum >/dev/null 2>&1; then
-    (cd "$OUT_DIR" && shasum -a 256 "$(basename "$file")" > "$(basename "$file").sha256")
+    shasum -a 256 "$file" | awk '{print $1}'
   elif command -v sha256sum >/dev/null 2>&1; then
-    (cd "$OUT_DIR" && sha256sum "$(basename "$file")" > "$(basename "$file").sha256")
+    sha256sum "$file" | awk '{print $1}'
+  else
+    printf 'error: shasum or sha256sum required\n' >&2
+    exit 1
   fi
 }
+write_sha256() {
+  file="$1"
+  (cd "$OUT_DIR" && printf '%s  %s\n' "$(sha256_value "$file")" "$(basename "$file")" > "$(basename "$file").sha256")
+}
 write_sha256 "$MACOS_ARCHIVE"
+MACOS_SHA256="$(sha256_value "$MACOS_ARCHIVE")"
+WINDOWS_SHA256=""
 if [ -f "$WINDOWS_ARCHIVE" ]; then
   write_sha256 "$WINDOWS_ARCHIVE"
+  WINDOWS_SHA256="$(sha256_value "$WINDOWS_ARCHIVE")"
 fi
+cat > "$OUT_DIR/release-manifest.json" <<JSON
+{
+  "version": "$VERSION",
+  "assets": {
+    "macos-arm64": {
+      "file": "$(basename "$MACOS_ARCHIVE")",
+      "sha256": "$MACOS_SHA256"
+    },
+    "windows-x64": {
+      "file": "$(basename "$WINDOWS_ARCHIVE")",
+      "sha256": "$WINDOWS_SHA256"
+    }
+  }
+}
+JSON
 printf 'Release staged at %s\n' "$STAGE"
 printf 'Archive written to %s\n' "$MACOS_ARCHIVE"
 if [ -f "$WINDOWS_ARCHIVE" ]; then

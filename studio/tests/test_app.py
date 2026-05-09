@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from constellation_studio.app import (
+    default_app_data_dir,
     find_bundled_onnx_model,
     find_bundled_playview_dist,
 )
+
+if TYPE_CHECKING:
+    import pytest
+
+
+def test_default_app_data_dir_honors_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CONSTELLATION_DATA_DIR", str(tmp_path / "data"))
+
+    assert default_app_data_dir() == tmp_path / "data"
 
 
 def test_find_bundled_onnx_model_checks_models_dir(tmp_path: Path) -> None:

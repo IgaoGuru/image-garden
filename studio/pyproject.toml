@@ -22,6 +22,8 @@ onnx = [
 ]
 
 [project.scripts]
+image-garden = "constellation_studio.cli:main"
+constellation = "constellation_studio.cli:main"
 constellation-app = "constellation_studio.app:main"
 constellation-backend = "constellation_studio.backend:main"
 constellation-embed = "constellation_studio.embed:main"

@@ -22,25 +22,30 @@ from constellation_studio.embedding_providers import (
 
 
 def default_app_data_dir() -> Path:
-    """Return the default per-user Constellation app data directory."""
+    """Return the default per-user Image Garden app data directory."""
+    env_data = os.environ.get("IMAGE_GARDEN_DATA_DIR") or os.environ.get(
+        "CONSTELLATION_DATA_DIR"
+    )
+    if env_data:
+        return Path(env_data).expanduser()
     if os.name == "nt":
         root = os.environ.get("LOCALAPPDATA") or str(
             Path.home() / "AppData" / "Local"
         )
-        return Path(root) / "Constellation"
+        return Path(root) / "Image Garden"
     if sys.platform == "darwin":
-        return (
-            Path.home() / "Library" / "Application Support" / "Constellation"
-        )
+        return Path.home() / "Library" / "Application Support" / "Image Garden"
     root = os.environ.get("XDG_DATA_HOME") or str(
         Path.home() / ".local" / "share"
     )
-    return Path(root) / "constellation"
+    return Path(root) / "image-garden"
 
 
 def find_bundled_onnx_model(start: Path) -> Path | None:
     """Find a bundled ONNX image encoder model if one is present."""
-    env_model = os.environ.get("CONSTELLATION_ONNX_MODEL")
+    env_model = os.environ.get("IMAGE_GARDEN_ONNX_MODEL") or os.environ.get(
+        "CONSTELLATION_ONNX_MODEL"
+    )
     if env_model:
         candidate = Path(env_model).expanduser().resolve()
         if candidate.is_file():
@@ -165,7 +170,9 @@ def run(args: argparse.Namespace) -> int:
     """Run the browser-first local app."""
     viewer_dist = cast("Path | None", args.viewer_dist)
     if viewer_dist is None:
-        env_viewer = os.environ.get("CONSTELLATION_VIEWER_DIST")
+        env_viewer = os.environ.get(
+            "IMAGE_GARDEN_VIEWER_DIST"
+        ) or os.environ.get("CONSTELLATION_VIEWER_DIST")
         viewer_dist = (
             Path(env_viewer)
             if env_viewer
@@ -173,7 +180,9 @@ def run(args: argparse.Namespace) -> int:
         )
     playview_dist = cast("Path | None", args.playview_dist)
     if playview_dist is None:
-        env_playview = os.environ.get("CONSTELLATION_PLAYVIEW_DIST")
+        env_playview = os.environ.get(
+            "IMAGE_GARDEN_PLAYVIEW_DIST"
+        ) or os.environ.get("CONSTELLATION_PLAYVIEW_DIST")
         playview_dist = (
             Path(env_playview)
             if env_playview
@@ -223,7 +232,7 @@ def run(args: argparse.Namespace) -> int:
         onnx_provider=str(args.onnx_provider),
         open=not bool(args.no_open),
     )
-    print("✦ Constellation")
+    print("✦ Image Garden")
     print(f"Data directory: {data_dir}")
     print(f"Embedding engine: {engine}")
     return backend.run(backend_args)

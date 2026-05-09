@@ -1,4 +1,4 @@
-# Constellation
+# Image Garden
 
 Make a private 3D map of your photos.
 
@@ -22,8 +22,22 @@ Make a private 3D map of your photos.
 irm https://github.com/IgaoGuru/image-garden/releases/latest/download/install.ps1 | iex
 ```
 
-Then use the arrow keys in the installer and press **Enter** on the recommended
-option.
+The installer creates a user-local `image-garden` command. After install:
+
+```bash
+image-garden start    # start the local app here; Ctrl+C stops it
+image-garden open     # reopen the browser while it is running
+image-garden start --background # advanced: return to the shell
+image-garden stop     # stop a background run
+image-garden status   # show URL/PID/version/model state
+image-garden logs     # inspect logs
+image-garden doctor   # diagnose install issues
+image-garden update   # update app files
+image-garden rollback # return to previous release
+image-garden uninstall
+```
+
+No `.app` bundle is required. The app is CLI-managed and opens in your browser.
 
 Installer downloads only user-local dependencies: `uv`, Python 3.13 managed by
 `uv`, Image Garden release files, Python runtime wheels, and the local ONNX
@@ -39,11 +53,34 @@ pnpm studio:sync
 pnpm studio:app
 ```
 
+### Release
+
+To build local release assets only:
+
+```bash
+pnpm release:bundle
+```
+
+That builds web assets, locks/stages Studio, writes platform archives,
+checksums, bootstrap installers, and `dist-release/release-manifest.json`.
+
+To publish an official GitHub release after committing/merging:
+
+```bash
+./release-tag 0.2.1
+```
+
+That validates, builds `dist-release/` as `v0.2.1`, creates/pushes the git tag,
+and uploads release assets with `gh`.
+
 ### Installer test loop
 
 ```bash
 pnpm installer:reset -- --yes
-CONSTELLATION_RELEASE_URL="file://$PWD/dist-release/constellation-macos-arm64.tar.gz" ./scripts/install.sh
+IMAGE_GARDEN_RELEASE_URL="file://$PWD/dist-release/image-garden-macos-arm64.tar.gz" ./scripts/install.sh --recommended --no-launch
+~/.local/bin/image-garden start --background --no-open
+~/.local/bin/image-garden status
+~/.local/bin/image-garden stop
 ```
 
 `installer:reset` deletes local install/app data and rebuilds `dist-release/`.

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Constellation"
-DEFAULT_INSTALL_DIR="$HOME/.constellation"
-INSTALL_DIR="${CONSTELLATION_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-RELEASE_URL="${CONSTELLATION_RELEASE_URL:-}"
-RELEASE_SHA256="${CONSTELLATION_RELEASE_SHA256:-}"
-RELEASE_BASE_URL="${CONSTELLATION_RELEASE_BASE_URL:-https://github.com/IgaoGuru/image-garden/releases/latest/download}"
+APP_NAME="Image Garden"
+DEFAULT_INSTALL_DIR="$HOME/.image-garden"
+INSTALL_DIR="${IMAGE_GARDEN_INSTALL_DIR:-${CONSTELLATION_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}}"
+RELEASE_URL="${IMAGE_GARDEN_RELEASE_URL:-${CONSTELLATION_RELEASE_URL:-}}"
+RELEASE_SHA256="${IMAGE_GARDEN_RELEASE_SHA256:-${CONSTELLATION_RELEASE_SHA256:-}}"
+RELEASE_BASE_URL="${IMAGE_GARDEN_RELEASE_BASE_URL:-${CONSTELLATION_RELEASE_BASE_URL:-https://github.com/IgaoGuru/image-garden/releases/latest/download}}"
 UV_INSTALL_URL="${UV_INSTALL_URL:-https://astral.sh/uv/install.sh}"
+ALLOW_INSECURE_CHECKSUM="${IMAGE_GARDEN_ALLOW_INSECURE_CHECKSUM:-${CONSTELLATION_ALLOW_INSECURE_CHECKSUM:-0}}"
 TMP_DIR=""
 
 cleanup() {
@@ -34,7 +35,7 @@ platform_asset_name() {
   case "$os_name" in
     Darwin)
       case "$arch_name" in
-        arm64) say "constellation-macos-arm64.tar.gz" ;;
+        arm64) say "image-garden-macos-arm64.tar.gz" ;;
         *) err "unsupported macOS architecture: $arch_name. Apple Silicon macOS is supported for now."; exit 1 ;;
       esac
       ;;
@@ -101,8 +102,15 @@ verify_sha256() {
   file="$1"
   expected="$2"
   if [ -z "$expected" ]; then
-    say "• checksum not provided; skipping verification"
-    return
+    case "$RELEASE_URL" in
+      file://*) say "• local release checksum not provided; skipping verification"; return ;;
+    esac
+    if [ "$ALLOW_INSECURE_CHECKSUM" = "1" ]; then
+      say "• checksum not provided; skipping verification by override"
+      return
+    fi
+    err "checksum not found. Public installs require ${RELEASE_URL}.sha256 or IMAGE_GARDEN_RELEASE_SHA256."
+    exit 1
   fi
   if have shasum; then
     actual="$(shasum -a 256 "$file" | awk '{print $1}')"
@@ -131,21 +139,49 @@ validate_extracted_release() {
   done
 }
 
+release_version() {
+  extracted="$1"
+  if [ -f "$extracted/VERSION" ]; then
+    tr -cd '[:alnum:]._-\n' < "$extracted/VERSION" | head -n 1
+  else
+    basename "$extracted" | sed 's/^image-garden-//' | sed 's/^constellation-//'
+  fi
+}
+
 install_extracted_release() {
   extracted="$1"
   parent="$(dirname "$INSTALL_DIR")"
+  version="$(release_version "$extracted")"
+  if [ -z "$version" ]; then
+    version="dev"
+  fi
+  release_dir="$INSTALL_DIR/releases/$version"
   backup="$TMP_DIR/previous-install"
+  old_release_backup="$TMP_DIR/previous-release"
   mkdir -p "$parent"
-  if [ -e "$INSTALL_DIR" ]; then
+  if [ -e "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/releases" ] && [ ! -L "$INSTALL_DIR/current" ]; then
     mv "$INSTALL_DIR" "$backup"
   fi
-  if ! mv "$extracted" "$INSTALL_DIR"; then
+  mkdir -p "$INSTALL_DIR/releases"
+  if [ -e "$release_dir" ]; then
+    mv "$release_dir" "$old_release_backup"
+  fi
+  if ! mv "$extracted" "$release_dir"; then
+    if [ -e "$old_release_backup" ]; then
+      mv "$old_release_backup" "$release_dir"
+    fi
     if [ -e "$backup" ]; then
+      rm -rf "$INSTALL_DIR"
       mv "$backup" "$INSTALL_DIR"
     fi
     err "failed to install app files"
     exit 1
   fi
+  ln -sfn "releases/$version" "$INSTALL_DIR/.current.tmp"
+  if [ -L "$INSTALL_DIR/current" ] || [ -e "$INSTALL_DIR/current" ]; then
+    rm -rf "$INSTALL_DIR/current"
+  fi
+  mv "$INSTALL_DIR/.current.tmp" "$INSTALL_DIR/current"
 }
 
 download_release() {
@@ -174,19 +210,20 @@ download_release() {
 }
 
 run_tui() {
-  tui="$INSTALL_DIR/scripts/install_tui.py"
+  app_dir="$INSTALL_DIR/current"
+  tui="$app_dir/scripts/install_tui.py"
   if [ ! -f "$tui" ]; then
     err "installer TUI missing: $tui"
     exit 1
   fi
   say "Starting installer UI…"
   if [ -t 0 ]; then
-    uv run --no-project --python 3.13 "$tui" --app-dir "$INSTALL_DIR" "$@"
+    uv run --no-project --python 3.13 "$tui" --app-dir "$app_dir" "$@"
   elif ( : </dev/tty ) 2>/dev/null; then
-    uv run --no-project --python 3.13 "$tui" --app-dir "$INSTALL_DIR" "$@" </dev/tty
+    uv run --no-project --python 3.13 "$tui" --app-dir "$app_dir" "$@" </dev/tty
   else
     say "No interactive terminal found; using recommended defaults."
-    uv run --no-project --python 3.13 "$tui" --app-dir "$INSTALL_DIR" --recommended "$@"
+    uv run --no-project --python 3.13 "$tui" --app-dir "$app_dir" --recommended "$@"
   fi
 }
 
