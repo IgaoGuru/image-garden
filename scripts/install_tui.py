@@ -24,7 +24,7 @@ from enum import StrEnum
 from pathlib import Path
 
 APP_NAME = "Constellation"
-MODEL_RELATIVE_PATH = Path("models") / "clip-image-encoder.onnx"
+MODEL_RELATIVE_PATH = Path("models") / "mobileclip-s1-vision.onnx"
 VIEWER_DIST = Path("viewer-dist")
 PLAYVIEW_DIST = Path("playview-dist")
 STUDIO_DIR = Path("studio")
@@ -400,7 +400,7 @@ def check_install(paths: AppPaths, uv_path: str | None) -> list[CheckResult]:
             paths.playview_dist.is_dir(),
             str(paths.playview_dist),
         ),
-        CheckResult("ONNX model", model_ok, model_detail),
+        CheckResult("MobileCLIP-S1", model_ok, model_detail),
     ]
 
 
@@ -533,10 +533,10 @@ def ensure_model(
         )
         return True
     if paths.model_path.is_file():
-        print(style("\n✓ ONNX model ready", Ansi.green))
+        print(style("\n✓ MobileCLIP-S1 ONNX model ready", Ansi.green))
         return True
     if not install_model:
-        print(style("\nSkipping ONNX model download.", Ansi.yellow))
+        print(style("\nSkipping MobileCLIP-S1 model download.", Ansi.yellow))
         return True
     code = run_command(
         [

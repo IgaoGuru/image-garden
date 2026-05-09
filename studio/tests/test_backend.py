@@ -13,7 +13,10 @@ from PIL import Image
 
 from constellation_studio.backend import run_test_backend
 from constellation_studio.embedding_providers import (
+    CLIP_IMAGE_MEAN,
+    CLIP_IMAGE_STD,
     DeterministicEmbeddingProvider,
+    read_onnx_preprocess_options,
 )
 from constellation_studio.index_store import IndexStore
 from constellation_studio.indexing import (
@@ -90,6 +93,47 @@ def fetch_bytes(url: str) -> bytes:
 
 def fetch_text(url: str) -> str:
     return fetch_bytes(url).decode("utf-8")
+
+
+def test_onnx_preprocess_options_use_clip_defaults_without_config(
+    tmp_path: Path,
+) -> None:
+    options = read_onnx_preprocess_options(
+        tmp_path / "vision_model.onnx",
+        default_image_size=224,
+    )
+
+    assert options.image_size == 224
+    assert options.mean == CLIP_IMAGE_MEAN
+    assert options.std == CLIP_IMAGE_STD
+
+
+def test_onnx_preprocess_options_read_mobileclip_config(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "onnx").mkdir()
+    (tmp_path / "preprocessor_config.json").write_text(
+        json.dumps(
+            {
+                "crop_size": {"height": 256, "width": 256},
+                "do_normalize": False,
+                "do_rescale": True,
+                "image_mean": [0.1, 0.2, 0.3],
+                "image_std": [0.4, 0.5, 0.6],
+                "rescale_factor": 1.0 / 255.0,
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    options = read_onnx_preprocess_options(
+        tmp_path / "onnx" / "vision_model.onnx",
+        default_image_size=224,
+    )
+
+    assert options.image_size == 256
+    assert options.mean == (0.0, 0.0, 0.0)
+    assert options.std == (1.0, 1.0, 1.0)
 
 
 def test_folder_source_adapter_scans_images(tmp_path: Path) -> None:

@@ -79,7 +79,27 @@ Useful options:
 - `--skip-errors` skips unreadable images and failed embeddings.
 - `--no-cache` recomputes embeddings instead of using the embedding cache.
 - `--model` and `--pretrained` are passed to `open_clip.create_model_and_transforms`.
+- `--embedding-engine onnx --onnx-model models/mobileclip-s1-vision.onnx` uses the local MobileCLIP-S1 ONNX path.
 - `--url-prefix /assets/` sets the server URL prefix for generated assets.
+
+## ONNX model downloads
+
+The browser-first app defaults to MobileCLIP-S1 ONNX from `Xenova/mobileclip_s1`.
+The downloader writes both `mobileclip-s1-vision.onnx` and the companion
+`preprocessor_config.json` so preprocessing matches the model.
+
+```bash
+pnpm studio:download-onnx
+```
+
+Legacy CLIP ViT-B/32 is still supported:
+
+```bash
+pnpm studio:download-onnx -- --model clip-vit-base-patch32
+```
+
+Models are not bundled in releases; installer/app setup downloads them into
+user-local app data. Embeddings stay local.
 
 ## Local backend API prototype
 
