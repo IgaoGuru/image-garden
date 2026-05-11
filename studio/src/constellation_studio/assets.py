@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from importlib import import_module
 from io import BytesIO
@@ -25,6 +26,7 @@ DEFAULT_JPEG_OPTIMIZE = False
 DEFAULT_JPEG_PROGRESSIVE = False
 
 WarnCallback = Callable[[str], None]
+ProgressCallback = Callable[[int, int], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,7 @@ class AssetOptions:
     jpeg_progressive: bool = DEFAULT_JPEG_PROGRESSIVE
     skip_errors: bool = False
     warn: WarnCallback | None = None
+    progress: ProgressCallback | None = None
     sanitize_workers: int | None = None
 
 
@@ -117,6 +120,7 @@ def sanitize_directory(
             worker_count=worker_count,
         ),
         options=options,
+        total=len(paths),
     )
 
     if not records:
@@ -128,19 +132,23 @@ def sanitize_directory(
 
 
 def collect_sanitized_records(
-    prepared_images: Sequence[
+    prepared_images: Iterator[
         tuple[Path, PreparedSanitizedImage | None, Exception | None]
     ],
     *,
     options: AssetOptions,
+    total: int,
 ) -> tuple[list[SanitizedImage], int]:
     """Write prepared images, skip failures/duplicates, return records."""
     records: list[SanitizedImage] = []
     seen_ids: set[str] = set()
     skipped = 0
+    processed = 0
     for path, prepared, error in prepared_images:
+        processed += 1
         if error is not None:
             skipped += handle_sanitize_error(path, error, options=options)
+            report_progress(options, processed, total)
             continue
         if prepared is None:  # pragma: no cover - defensive
             msg = f"failed to sanitize image without an error: {path}"
@@ -148,11 +156,19 @@ def collect_sanitized_records(
         if prepared.record.id in seen_ids:
             skipped += 1
             warn_duplicate(path, prepared.record, options=options)
+            report_progress(options, processed, total)
             continue
         write_prepared_sanitized_image(prepared)
         seen_ids.add(prepared.record.id)
         records.append(prepared.record)
+        report_progress(options, processed, total)
     return records, skipped
+
+
+def report_progress(options: AssetOptions, completed: int, total: int) -> None:
+    """Report sanitize progress when a callback is configured."""
+    if options.progress is not None:
+        options.progress(completed, total)
 
 
 def handle_sanitize_error(
@@ -177,10 +193,8 @@ def warn_duplicate(
 ) -> None:
     """Warn about one duplicate image when warnings are enabled."""
     if options.warn is not None:
-        options.warn(
-            f"Skipping duplicate image {path}; same sanitized hash as "
-            f"{record.id}",
-        )
+        message = f"Skipping duplicate image {path}; same sanitized hash as {record.id}"
+        options.warn(message)
 
 
 def sanitize_image(path: Path, *, options: AssetOptions) -> SanitizedImage:
@@ -195,12 +209,12 @@ def prepare_sanitized_images(
     *,
     options: AssetOptions,
     worker_count: int,
-) -> list[tuple[Path, PreparedSanitizedImage | None, Exception | None]]:
+) -> Iterator[tuple[Path, PreparedSanitizedImage | None, Exception | None]]:
     """Prepare sanitized images, preserving input order and errors."""
     if worker_count <= 1:
-        return [
-            prepare_sanitized_image_result(path, options) for path in paths
-        ]
+        for path in paths:
+            yield prepare_sanitized_image_result(path, options)
+        return
 
     def prepare(
         path: Path,
@@ -212,7 +226,41 @@ def prepare_sanitized_images(
         return prepare_sanitized_image_result(path, options)
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        return list(executor.map(prepare, paths))
+        yield from bounded_ordered_map(
+            executor,
+            prepare,
+            paths,
+            max_pending=worker_count * 2,
+        )
+
+
+def bounded_ordered_map[T, R](
+    executor: ThreadPoolExecutor,
+    function: Callable[[T], R],
+    items: Sequence[T],
+    *,
+    max_pending: int,
+) -> Iterator[R]:
+    """Map with bounded pending futures while preserving input order."""
+    item_iter = iter(items)
+    pending: deque[Future[R]] = deque()
+
+    def submit_next() -> bool:
+        try:
+            item = next(item_iter)
+        except StopIteration:
+            return False
+        pending.append(executor.submit(function, item))
+        return True
+
+    for _ in range(max(1, max_pending)):
+        if not submit_next():
+            break
+
+    while pending:
+        future = pending.popleft()
+        yield future.result()
+        _ = submit_next()
 
 
 def prepare_sanitized_image_result(
@@ -240,7 +288,9 @@ def prepare_sanitized_image(
         raise ValueError(msg)
 
     with Image.open(path) as source:
-        source.draft("RGB", (options.max_image_size, options.max_image_size))
+        _ = source.draft(
+            "RGB", (options.max_image_size, options.max_image_size)
+        )
         image = ImageOps.exif_transpose(source).convert("RGB")
 
     canonical = resize_copy(image, options.max_image_size)
@@ -295,9 +345,9 @@ def write_bytes_if_missing(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(dir=path.parent, delete=False) as temp_file:
         temp_path = Path(temp_file.name)
-        temp_file.write(content)
+        _ = temp_file.write(content)
     try:
-        temp_path.replace(path)
+        _ = temp_path.replace(path)
     except OSError:
         if not path.is_file():
             raise

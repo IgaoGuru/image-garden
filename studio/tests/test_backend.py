@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 import urllib.error
 import urllib.request
@@ -150,6 +151,28 @@ def test_folder_source_adapter_scans_images(tmp_path: Path) -> None:
     assert assets[0].media_type == "image"
     assert assets[0].metadata["sourcePath"]
     assert adapter.source_id.startswith("folder:")
+
+
+def test_index_store_status_uses_memory_snapshot_when_db_unavailable(
+    tmp_path: Path,
+) -> None:
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+    store.set_job_progress(
+        phase="sanitizing",
+        completed=12,
+        total=30,
+        message="Preparing local JPEG assets",
+    )
+
+    shutil.rmtree(paths.data_dir)
+    status = store.status()
+
+    assert status["state"] == "idle"
+    assert status["jobPhase"] == "sanitizing"
+    assert status["jobCompleted"] == 12
+    assert status["jobTotal"] == 30
+    assert status["jobMessage"] == "Preparing local JPEG assets"
 
 
 def test_import_folder_requires_embedding_provider(

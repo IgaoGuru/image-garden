@@ -116,21 +116,49 @@ def import_folder(  # noqa: PLR0913
             "ONNX model. Images were not added to the map."
         )
         raise ValueError(msg)
-    source_assets = {asset.source_asset_id: asset for asset in adapter.scan()}
-
     store.set_index_state("importing")
     store.set_job_progress(
-        phase="scanning",
+        phase="discovering",
         completed=0,
         total=0,
-        message=f"Scanning {resolved_folder}",
+        message=f"Discovering images in {resolved_folder}",
+    )
+    source_assets = {asset.source_asset_id: asset for asset in adapter.scan()}
+
+    last_sanitize_report = 0
+
+    def report_sanitize_progress(completed: int, total: int) -> None:
+        nonlocal last_sanitize_report
+        if completed != total and completed - last_sanitize_report < 25:
+            return
+        last_sanitize_report = completed
+        store.set_job_progress(
+            phase="sanitizing",
+            completed=completed,
+            total=total,
+            message="Preparing local JPEG assets",
+            persist=False,
+        )
+
+    store.set_job_progress(
+        phase="sanitizing",
+        completed=0,
+        total=0,
+        message="Preparing local JPEG assets",
     )
     sanitized = sanitize_directory(
         resolved_folder,
         options=AssetOptions(
             asset_root=asset_root,
             skip_errors=skip_errors,
+            progress=report_sanitize_progress,
         ),
+    )
+    store.set_job_progress(
+        phase="sanitizing",
+        completed=len(sanitized),
+        total=len(sanitized),
+        message="Prepared local JPEG assets",
     )
     positions = positions_for_sanitized_records(
         sanitized,

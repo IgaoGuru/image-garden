@@ -8,6 +8,7 @@ import json
 import mimetypes
 import platform
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -174,7 +175,7 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             self._send_path_or_404(path, send_body=send_body)
             return
         if route == "/api/status":
-            self._send_json(self.store.status(), send_body=send_body)
+            self._send_status(send_body=send_body)
             return
         if route == "/api/sources":
             self._send_json(source_capabilities(), send_body=send_body)
@@ -215,6 +216,23 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             self._send_path_or_404(path, send_body=send_body)
             return
         self.send_error(HTTPStatus.NOT_FOUND, "not found")
+
+    def _send_status(self, *, send_body: bool = True) -> None:
+        """Send status without letting transient store failures kill polling."""
+        try:
+            status = self.store.status()
+        except (OSError, RuntimeError, sqlite3.Error) as exc:
+            status = {
+                "state": "error",
+                "paused": False,
+                "totalAssets": 0,
+                "importedAssets": 0,
+                "dbPath": str(self.store.db_path),
+                "assetRoot": str(self.store.asset_root),
+                "jobPhase": "status-error",
+                "jobMessage": str(exc),
+            }
+        self._send_json(status, send_body=send_body)
 
     def _post_import_folder(self) -> None:
         payload = self._read_json_body()
