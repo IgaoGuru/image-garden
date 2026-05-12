@@ -715,10 +715,13 @@ def build_thumbnail_atlas_index(
         for cell_index, asset in enumerate(page_assets):
             col = cell_index % cols
             row = cell_index // cols
-            u0 = (col * thumb_size) / page_size
-            v0 = (row * thumb_size) / page_size
-            u1 = ((col + 1) * thumb_size) / page_size
-            v1 = ((row + 1) * thumb_size) / page_size
+            u0, v0, u1, v1 = atlas_uv_rect(
+                asset,
+                col=col,
+                row=row,
+                thumb_size=thumb_size,
+                page_size=page_size,
+            )
             entries.append(
                 {
                     "id": str(asset["id"]),
@@ -740,6 +743,34 @@ def build_thumbnail_atlas_index(
         "pages": pages,
         "entries": entries,
     }
+
+
+def atlas_uv_rect(
+    asset: Mapping[str, object],
+    *,
+    col: int,
+    row: int,
+    thumb_size: int,
+    page_size: int,
+) -> tuple[float, float, float, float]:
+    """Return tight UV rect around the actual thumbnail inside an atlas cell."""
+    width = max(1, int(asset.get("width", thumb_size) or thumb_size))
+    height = max(1, int(asset.get("height", thumb_size) or thumb_size))
+    if width >= height:
+        rendered_width = thumb_size
+        rendered_height = max(1, round(thumb_size * height / width))
+    else:
+        rendered_height = thumb_size
+        rendered_width = max(1, round(thumb_size * width / height))
+    x = col * thumb_size + (thumb_size - rendered_width) / 2
+    y = row * thumb_size + (thumb_size - rendered_height) / 2
+    inset = 0.5
+    return (
+        (x + inset) / page_size,
+        (y + inset) / page_size,
+        (x + rendered_width - inset) / page_size,
+        (y + rendered_height - inset) / page_size,
+    )
 
 
 def atlas_sort_key(asset: Mapping[str, object]) -> tuple[int, str]:

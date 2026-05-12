@@ -581,6 +581,8 @@ function createAtlasMaterial(texture: Texture): ShaderMaterial {
       void main() {
         vec4 color = texture2D(map, vAtlasUv);
         gl_FragColor = vec4(color.rgb, color.a * opacity);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }
     `,
     transparent: true,
