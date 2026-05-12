@@ -579,6 +579,10 @@ function createTextureArrayMaterial(texture: DataArrayTexture): ShaderMaterial {
       void main() {
         vec4 color = texture(mapArray, vec3(vec2(vUv.x, 1.0 - vUv.y), float(vLayer)));
         outColor = vec4(color.rgb, 1.0);
+        #if defined( TONE_MAPPING )
+          outColor.rgb = toneMapping(outColor.rgb);
+        #endif
+        outColor = linearToOutputTexel(outColor);
       }
     `,
     transparent: false,
