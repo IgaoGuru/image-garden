@@ -152,6 +152,35 @@ export interface PositionedImage extends ConstellationImage {
   position: Vec3;
 }
 
+export interface TextureQueueDebugStats {
+  activeLoads: number;
+  queued: number;
+  loading: number;
+  loaded: number;
+  totalRequests: number;
+  totalLoads: number;
+  totalErrors: number;
+}
+
+export interface ViewerDebugStats {
+  mode: 'cards' | 'lod';
+  imageCount: number;
+  cameraPosition: Vec3;
+  lod?: {
+    activeCards: number;
+    loadedCards: number;
+    capacity: number;
+    candidateCount: number;
+    nearestUnloadedDistance: number | null;
+    lazyLoadDistance: number;
+    textureUnloadDistance: number;
+    maxTexturedCards: number;
+    maxLoadedTextures: number;
+    lastUpdateMs: number;
+    textureQueue: TextureQueueDebugStats;
+  };
+}
+
 export interface ConstellationViewer {
   readonly container: HTMLElement;
   readonly data: ConstellationData;
@@ -162,4 +191,5 @@ export interface ConstellationViewer {
   resetCamera(): void;
   setData(data: ConstellationData): void;
   setSelected(id: string | null): void;
+  getDebugStats(): ViewerDebugStats;
 }

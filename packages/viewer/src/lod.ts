@@ -17,7 +17,7 @@ import {
 
 import { TextureLoadQueue } from './loader';
 import { viewportHeightScaleForCap } from './sprites';
-import type { ConstellationImage, PositionedImage, SpriteOptions } from './types';
+import type { ConstellationImage, PositionedImage, SpriteOptions, ViewerDebugStats } from './types';
 
 interface LodRecord {
   image: PositionedImage;
@@ -63,6 +63,7 @@ export class PointLodManager {
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
   private updateAccumulator = 0.25;
+  private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -93,6 +94,7 @@ export class PointLodManager {
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
     this.textureQueue = new TextureLoadQueue(this.options.maxConcurrentLoads);
+    this.debugStats = this.emptyDebugStats();
     this.raycaster.params.Points = { threshold: this.options.pointPickRadius };
     this.group.add(this.cardGroup);
     this.scene.add(this.group);
@@ -175,6 +177,21 @@ export class PointLodManager {
     return this.recordsByPointIndex[index]?.image ?? null;
   }
 
+  getDebugStats(): NonNullable<ViewerDebugStats['lod']> {
+    const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
+    if (!camera) {
+      return {
+        ...(this.debugStats ?? this.emptyDebugStats()),
+        textureQueue: this.textureQueue.getDebugStats(),
+      };
+    }
+    const startedAt = performance.now();
+    for (const record of this.records.values()) {
+      record.lastDistance = record.position.distanceTo(camera.position);
+    }
+    return this.debugSnapshot(performance.now() - startedAt);
+  }
+
   dispose(): void {
     this.domElement.removeEventListener('pointermove', this.onPointerMove);
     this.domElement.removeEventListener('click', this.onClick);
@@ -184,30 +201,80 @@ export class PointLodManager {
   }
 
   private updateCards(cameraPosition: Vector3): void {
-    for (const record of this.records.values()) {
+    const startedAt = performance.now();
+    const records = [...this.records.values()];
+    for (const record of records) {
       record.lastDistance = record.position.distanceTo(cameraPosition);
-      if (
-        record.card &&
-        record.image.id !== this.selectedId &&
-        record.lastDistance > this.options.textureUnloadDistance
-      ) {
+    }
+
+    const desiredCards = records
+      .filter((record) => record.lastDistance <= this.options.lazyLoadDistance)
+      .sort((a, b) => a.lastDistance - b.lastDistance)
+      .slice(0, this.options.maxTexturedCards);
+    const desiredIds = new Set(desiredCards.map((record) => record.image.id));
+
+    for (const record of records) {
+      if (!record.card || record.image.id === this.selectedId) continue;
+      if (!desiredIds.has(record.image.id) || record.lastDistance > this.options.textureUnloadDistance) {
         this.removeCard(record);
       }
     }
 
-    const activeCards = () => [...this.records.values()].filter((record) => record.card).length;
-    const capacity = Math.max(0, this.options.maxTexturedCards - activeCards());
-    if (capacity <= 0) return;
-
-    const candidates = [...this.records.values()]
-      .filter((record) => !record.card && record.lastDistance <= this.options.lazyLoadDistance)
-      .sort((a, b) => a.lastDistance - b.lastDistance)
+    const capacity = Math.max(
+      0,
+      this.options.maxTexturedCards - records.filter((record) => record.card).length,
+    );
+    const candidates = desiredCards
+      .filter((record) => !record.card)
       .slice(0, capacity);
 
     for (const record of candidates) {
       this.ensureCard(record);
       this.requestTexture(record);
     }
+    this.debugStats = this.debugSnapshot(performance.now() - startedAt);
+  }
+
+  private debugSnapshot(lastUpdateMs: number): NonNullable<ViewerDebugStats['lod']> {
+    const records = [...this.records.values()];
+    const activeCards = records.filter((record) => record.card).length;
+    const loadedCards = records.filter((record) => record.loaded).length;
+    const capacity = Math.max(0, this.options.maxTexturedCards - activeCards);
+    const unloaded = records.filter((record) => !record.card);
+    const nearestUnloadedDistance = unloaded.reduce<number | null>(
+      (nearest, record) => (nearest === null ? record.lastDistance : Math.min(nearest, record.lastDistance)),
+      null,
+    );
+    const candidateCount = unloaded.filter((record) => record.lastDistance <= this.options.lazyLoadDistance).length;
+    return {
+      activeCards,
+      loadedCards,
+      capacity,
+      candidateCount,
+      nearestUnloadedDistance,
+      lazyLoadDistance: this.options.lazyLoadDistance,
+      textureUnloadDistance: this.options.textureUnloadDistance,
+      maxTexturedCards: this.options.maxTexturedCards,
+      maxLoadedTextures: this.options.maxLoadedTextures,
+      lastUpdateMs,
+      textureQueue: this.textureQueue.getDebugStats(),
+    };
+  }
+
+  private emptyDebugStats(): NonNullable<ViewerDebugStats['lod']> {
+    return {
+      activeCards: 0,
+      loadedCards: 0,
+      capacity: this.options.maxTexturedCards,
+      candidateCount: 0,
+      nearestUnloadedDistance: null,
+      lazyLoadDistance: this.options.lazyLoadDistance,
+      textureUnloadDistance: this.options.textureUnloadDistance,
+      maxTexturedCards: this.options.maxTexturedCards,
+      maxLoadedTextures: this.options.maxLoadedTextures,
+      lastUpdateMs: 0,
+      textureQueue: this.textureQueue.getDebugStats(),
+    };
   }
 
   private ensureCard(record: LodRecord): void {

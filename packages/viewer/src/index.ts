@@ -12,6 +12,7 @@ import type {
   ConstellationViewer,
   ConstellationViewerOptions,
   PositionedImage,
+  ViewerDebugStats,
 } from './types';
 
 export type {
@@ -29,7 +30,9 @@ export type {
   RuntimeAssetMetadata,
   RuntimeMediaType,
   SpriteOptions,
+  TextureQueueDebugStats,
   Vec3,
+  ViewerDebugStats,
 } from './types';
 export {
   createFetchDataSource,
@@ -44,6 +47,7 @@ interface RenderManager {
   setImages(images: PositionedImage[]): void;
   update(camera: SceneHost['camera'], deltaSeconds: number): void;
   setSelected(id: string | null): void;
+  getDebugStats(): NonNullable<ViewerDebugStats['lod']>;
   dispose(): void;
 }
 
@@ -128,6 +132,19 @@ class ConstellationViewerImpl implements ConstellationViewer {
 
   setSelected(id: string | null): void {
     this.sprites.setSelected(id);
+  }
+
+  getDebugStats(): ViewerDebugStats {
+    return {
+      mode: this.usingLod ? 'lod' : 'cards',
+      imageCount: this.positions.length,
+      cameraPosition: [
+        this.sceneHost.camera.position.x,
+        this.sceneHost.camera.position.y,
+        this.sceneHost.camera.position.z,
+      ],
+      lod: this.sprites.getDebugStats(),
+    };
   }
 
   destroy(): void {

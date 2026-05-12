@@ -62,6 +62,7 @@ let lastProgressLogKey = '';
 let visibleProgress = 0;
 let helpTimer = 0;
 let idleTimer = 0;
+let debugTimer = 0;
 let spinnerFrame = 0;
 let wasPointerLocked = false;
 let tutorialActive = false;
@@ -141,7 +142,15 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
   viewerInstance = mount(
     root,
     { images: nextAssets.map((asset) => ({ ...asset, url: asset.fullUrl ?? asset.thumbnailUrl })) },
-    { backgroundColor: 0x000000, sprites: { renderMode: 'auto' }, layout: { center: false } },
+    {
+      backgroundColor: 0x000000,
+      sprites: {
+        renderMode: 'auto',
+        maxTexturedCards: 9_000,
+        maxLoadedTextures: 9_000,
+      },
+      layout: { center: false },
+    },
   );
   status.textContent = `${nextAssets.length} images`;
   requestAnimationFrame(() => root.classList.add('visible'));
@@ -163,6 +172,13 @@ function installGlobalHandlers(): void {
     event.preventDefault();
     toggleMenu();
     if (!tutorialActive) showHelp('wasd move · shift fast · spacebar up · c down · esc go back', 6000);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() !== 'l' || !event.shiftKey) return;
+    if (!isPlayviewVisible()) return;
+    event.preventDefault();
+    void toggleLiveDebug();
   });
 
   document.addEventListener('pointerlockchange', () => {
@@ -619,7 +635,7 @@ function showMenu(): void {
 function hideMenu(): void {
   menu.classList.remove('visible');
   menu.setAttribute('aria-hidden', 'true');
-  debug.classList.remove('visible');
+  stopLiveDebug();
   root.querySelector<HTMLCanvasElement>('canvas')?.focus();
 }
 
@@ -641,10 +657,51 @@ async function reimportLastFolder(): Promise<void> {
 }
 
 async function showDebug(): Promise<void> {
-  const current = await fetchJson<ApiStatus>('/api/status');
-  latestStatus = current;
-  debug.textContent = JSON.stringify(current, null, 2);
-  debug.classList.toggle('visible');
+  await toggleLiveDebug();
+}
+
+async function toggleLiveDebug(): Promise<void> {
+  if (debug.classList.contains('visible')) {
+    stopLiveDebug();
+    return;
+  }
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (!menu.classList.contains('visible')) showMenu();
+  debug.classList.add('visible');
+  await refreshLiveDebug();
+  window.clearInterval(debugTimer);
+  debugTimer = window.setInterval(() => {
+    void refreshLiveDebug();
+  }, 500);
+}
+
+function stopLiveDebug(): void {
+  window.clearInterval(debugTimer);
+  debugTimer = 0;
+  debug.classList.remove('visible');
+}
+
+async function refreshLiveDebug(): Promise<void> {
+  const current = await fetchJson<ApiStatus>('/api/status').catch(() => null);
+  if (current) latestStatus = current;
+  const resourceEntries = performance.getEntriesByType('resource');
+  const thumbnailRequests = resourceEntries.filter((entry) => entry.name.includes('/api/thumbnails/')).length;
+  const fileRequests = resourceEntries.filter((entry) => entry.name.includes('/api/files/')).length;
+  const assetPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/assets')).length;
+  debug.textContent = JSON.stringify(
+    {
+      status: current,
+      viewer: viewerInstance?.getDebugStats() ?? null,
+      resources: {
+        assetPageRequests,
+        thumbnailRequests,
+        fileRequests,
+      },
+      pointerLock: document.pointerLockElement === root.querySelector('canvas'),
+    },
+    null,
+    2,
+  );
 }
 
 function delay(ms: number): Promise<void> {
