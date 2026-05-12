@@ -1,4 +1,4 @@
-import { mount, type ConstellationViewer, type RuntimeAsset } from '@constellation/viewer';
+import { mount, type ConstellationViewer, type LayoutOptions, type RuntimeAsset } from '@constellation/viewer';
 import './style.css';
 
 interface ApiStatus {
@@ -43,6 +43,15 @@ interface AssetPage {
   offset?: number;
 }
 
+interface LayoutTuning {
+  scale: number;
+  duplicateJitter: boolean;
+  duplicateJitterDistance: number;
+  duplicateJitterMin: number;
+  duplicateJitterHalfLife: number;
+  duplicateJitterMax: number;
+}
+
 declare global {
   interface Window {
     constellationDesktop?: DesktopBridge;
@@ -62,6 +71,19 @@ const starfield = mustQuery<HTMLElement>('#starfield');
 const progressLog = mustQuery<HTMLElement>('#progress-log');
 const menu = mustQuery<HTMLElement>('#menu');
 const debug = mustQuery<HTMLElement>('#debug');
+const rerendering = mustQuery<HTMLElement>('#rerendering');
+const layoutJitterEnabled = mustQuery<HTMLInputElement>('#layout-jitter-enabled');
+const layoutScaleInput = mustQuery<HTMLInputElement>('#layout-scale');
+const layoutScaleValue = mustQuery<HTMLOutputElement>('#layout-scale-value');
+const layoutJitterDistanceInput = mustQuery<HTMLInputElement>('#layout-jitter-distance');
+const layoutJitterDistanceValue = mustQuery<HTMLOutputElement>('#layout-jitter-distance-value');
+const layoutJitterMinInput = mustQuery<HTMLInputElement>('#layout-jitter-min');
+const layoutJitterMinValue = mustQuery<HTMLOutputElement>('#layout-jitter-min-value');
+const layoutJitterHalfLifeInput = mustQuery<HTMLInputElement>('#layout-jitter-half-life');
+const layoutJitterHalfLifeValue = mustQuery<HTMLOutputElement>('#layout-jitter-half-life-value');
+const layoutJitterMaxInput = mustQuery<HTMLInputElement>('#layout-jitter-max');
+const layoutJitterMaxValue = mustQuery<HTMLOutputElement>('#layout-jitter-max-value');
+const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
 const windVolumeInput = mustQuery<HTMLInputElement>('#wind-volume');
 const windVolumeValue = mustQuery<HTMLOutputElement>('#wind-volume-value');
 const windStatus = mustQuery<HTMLElement>('#wind-status');
@@ -98,9 +120,19 @@ const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
 const minTutorialStepMs = 5_500;
 const assetPageSize = 5_000;
+const defaultLayoutTuning: LayoutTuning = {
+  scale: 2,
+  duplicateJitter: true,
+  duplicateJitterDistance: 8,
+  duplicateJitterMin: 8,
+  duplicateJitterHalfLife: 12,
+  duplicateJitterMax: 80,
+};
+let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
 
 window.imageGardenDebug = readDebugSnapshot;
 
+setupLayoutControls();
 setupWindAmbience();
 
 window.setInterval(() => {
@@ -173,15 +205,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         maxTexturedCards: 9_000,
         maxLoadedTextures: 9_000,
       },
-      layout: {
-        center: false,
-        scale: 2,
-        duplicateJitter: true,
-        duplicateJitterDistance: 12,
-        duplicateJitterMin: 50,
-        duplicateJitterHalfLife: 50,
-        duplicateJitterMax: 250,
-      },
+      layout: currentLayoutOptions(),
     },
   );
   status.textContent = `${nextAssets.length} images`;
@@ -239,6 +263,86 @@ async function handleMenuAction(action: string): Promise<void> {
   if (action === 'open-data') await postJson('/api/system/open-data-dir', {});
   if (action === 'clear-data') await clearData();
   if (action === 'debug') await showDebug();
+}
+
+function setupLayoutControls(): void {
+  writeLayoutControls(layoutTuning);
+  for (const input of [
+    layoutJitterEnabled,
+    layoutScaleInput,
+    layoutJitterDistanceInput,
+    layoutJitterMinInput,
+    layoutJitterHalfLifeInput,
+    layoutJitterMaxInput,
+  ]) {
+    input.addEventListener('input', () => {
+      layoutTuning = readLayoutControls();
+      writeLayoutControls(layoutTuning);
+    });
+  }
+  layoutApply.addEventListener('click', () => {
+    layoutTuning = readLayoutControls();
+    writeLayoutControls(layoutTuning);
+    void rerenderGarden();
+  });
+}
+
+function currentLayoutOptions(): LayoutOptions {
+  return {
+    center: false,
+    scale: layoutTuning.scale,
+    duplicateJitter: layoutTuning.duplicateJitter,
+    duplicateJitterDistance: layoutTuning.duplicateJitterDistance,
+    duplicateJitterMin: layoutTuning.duplicateJitterMin,
+    duplicateJitterHalfLife: layoutTuning.duplicateJitterHalfLife,
+    duplicateJitterMax: layoutTuning.duplicateJitterMax,
+  };
+}
+
+function readLayoutControls(): LayoutTuning {
+  return {
+    scale: numericInput(layoutScaleInput, defaultLayoutTuning.scale),
+    duplicateJitter: layoutJitterEnabled.checked,
+    duplicateJitterDistance: numericInput(layoutJitterDistanceInput, defaultLayoutTuning.duplicateJitterDistance),
+    duplicateJitterMin: numericInput(layoutJitterMinInput, defaultLayoutTuning.duplicateJitterMin),
+    duplicateJitterHalfLife: numericInput(layoutJitterHalfLifeInput, defaultLayoutTuning.duplicateJitterHalfLife),
+    duplicateJitterMax: numericInput(layoutJitterMaxInput, defaultLayoutTuning.duplicateJitterMax),
+  };
+}
+
+function writeLayoutControls(tuning: LayoutTuning): void {
+  layoutJitterEnabled.checked = tuning.duplicateJitter;
+  layoutScaleInput.value = String(tuning.scale);
+  layoutScaleValue.value = `${tuning.scale.toFixed(2)}×`;
+  layoutJitterDistanceInput.value = String(tuning.duplicateJitterDistance);
+  layoutJitterDistanceValue.value = tuning.duplicateJitterDistance.toFixed(0);
+  layoutJitterMinInput.value = String(tuning.duplicateJitterMin);
+  layoutJitterMinValue.value = tuning.duplicateJitterMin.toFixed(0);
+  layoutJitterHalfLifeInput.value = String(tuning.duplicateJitterHalfLife);
+  layoutJitterHalfLifeValue.value = tuning.duplicateJitterHalfLife.toFixed(0);
+  layoutJitterMaxInput.value = String(tuning.duplicateJitterMax);
+  layoutJitterMaxValue.value = tuning.duplicateJitterMax.toFixed(0);
+}
+
+async function rerenderGarden(): Promise<void> {
+  if (assets.length === 0) return;
+  rerendering.classList.add('visible');
+  rerendering.setAttribute('aria-hidden', 'false');
+  await nextFrame();
+  mountViewer(assets);
+  await nextFrame();
+  rerendering.classList.remove('visible');
+  rerendering.setAttribute('aria-hidden', 'true');
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · jitter ${layoutTuning.duplicateJitter ? 'on' : 'off'}`;
+}
+
+function numericInput(input: HTMLInputElement, fallback: number): number {
+  const value = Number.parseFloat(input.value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function setupWindAmbience(): void {
