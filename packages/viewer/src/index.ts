@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 
 import { AtlasLodManager } from './atlas-lod';
+import { TextureArrayLodManager } from './texture-array-lod';
 import { createFlyControls, type FlyControls } from './controls';
 import { runtimeAssetsToData } from './data-source';
 import { computeLayout } from './layout';
@@ -177,6 +178,9 @@ class ConstellationViewerImpl implements ConstellationViewer {
     };
     if (!useLod) {
       return new SpriteManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
+    }
+    if (this.options.sprites?.textureArray !== false && this.sceneHost.renderer.capabilities.isWebGL2) {
+      return new TextureArrayLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
     }
     return this.options.sprites?.atlas === false
       ? new PointLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions)

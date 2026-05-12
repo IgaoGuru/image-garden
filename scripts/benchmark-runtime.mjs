@@ -267,6 +267,13 @@ function printResult(result) {
   console.log(`metadata loaded: ${formatMs(playview.bootToAllMetadataMs)}`);
   console.log(`first thumbnail: ${formatMs(playview.bootToFirstThumbnailMs)}`);
   console.log(`${playview.visibleThreshold} visible thumbnails: ${formatMs(playview.bootToVisibleThumbnailsMs)}`);
+  const lod = playview.finalDebug?.viewer?.lod;
+  const resources = playview.finalDebug?.resources;
+  if (lod?.textureArrayPagesLoaded !== undefined) console.log(`texture-array pages loaded: ${lod.textureArrayPagesLoaded}`);
+  if (lod?.atlasPagesLoaded !== undefined) console.log(`atlas pages loaded: ${lod.atlasPagesLoaded}`);
+  if (resources?.textureArrayPageRequests !== undefined) console.log(`texture-array page requests: ${resources.textureArrayPageRequests}`);
+  if (resources?.atlasPageRequests !== undefined) console.log(`atlas page requests: ${resources.atlasPageRequests}`);
+  if (resources?.thumbnailRequests !== undefined) console.log(`thumbnail requests: ${resources.thumbnailRequests}`);
   console.log('\nJSON');
   console.log(JSON.stringify(result, null, 2));
 }

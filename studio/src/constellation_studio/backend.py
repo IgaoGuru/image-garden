@@ -229,6 +229,15 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
                 send_body=send_body,
             )
             return
+        if route == "/api/texture-array/index.json":
+            self._get_texture_array_index(query, send_body=send_body)
+            return
+        if route.startswith("/api/texture-array/pages/"):
+            self._get_texture_array_page(
+                route.removeprefix("/api/texture-array/pages/"),
+                send_body=send_body,
+            )
+            return
         if route.startswith("/api/assets/"):
             self._get_asset(
                 route.removeprefix("/api/assets/"), send_body=send_body
@@ -487,6 +496,34 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND, "not found")
             return
         path = atlas_page_path(self.asset_root, page_index=page_index)
+        self._send_path_or_404(path, send_body=send_body)
+
+    def _get_texture_array_index(
+        self,
+        query: Mapping[str, list[str]],
+        *,
+        send_body: bool,
+    ) -> None:
+        thumb_size = bounded_int(query, "thumbSize", default=256, upper=512)
+        layers_per_page = bounded_int(
+            query,
+            "layersPerPage",
+            default=256,
+            upper=1024,
+        )
+        index = build_texture_array_index(
+            self.store,
+            self.asset_root,
+            thumb_size=thumb_size,
+            layers_per_page=layers_per_page,
+        )
+        self._send_json(index, send_body=send_body)
+
+    def _get_texture_array_page(self, raw_page: str, *, send_body: bool) -> None:
+        path = resolve_below(texture_array_root(self.asset_root), raw_page)
+        if path is None or path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            self.send_error(HTTPStatus.NOT_FOUND, "not found")
+            return
         self._send_path_or_404(path, send_body=send_body)
 
     def _get_asset(self, raw_id: str, *, send_body: bool) -> None:
@@ -822,6 +859,164 @@ def write_thumbnail_atlas_page(  # noqa: PLR0913
     temporary_path = page_path.with_suffix(".tmp.jpg")
     page.save(temporary_path, format="JPEG", quality=82, optimize=True)
     temporary_path.replace(page_path)
+
+
+def texture_array_root(asset_root: Path) -> Path:
+    """Return texture-array cache root."""
+    return asset_root / "texture-array"
+
+
+def texture_array_dir(
+    asset_root: Path,
+    *,
+    thumb_size: int = 256,
+    layers_per_page: int = 256,
+) -> Path:
+    """Return texture-array cache directory for a tier."""
+    return texture_array_root(asset_root) / f"thumb{thumb_size}-layers{layers_per_page}"
+
+
+def texture_array_page_path(
+    asset_root: Path,
+    *,
+    page_index: int,
+    thumb_size: int = 256,
+    layers_per_page: int = 256,
+) -> Path:
+    """Return one texture-array source page path."""
+    return texture_array_dir(
+        asset_root,
+        thumb_size=thumb_size,
+        layers_per_page=layers_per_page,
+    ) / f"page-{page_index}.jpg"
+
+
+def build_texture_array_index(
+    store: IndexStore,
+    asset_root: Path,
+    *,
+    thumb_size: int,
+    layers_per_page: int,
+) -> dict[str, object]:
+    """Build/generate source pages for client-side DataArrayTexture uploads."""
+    layers_per_page = max(1, layers_per_page)
+    cols = max(1, int(layers_per_page**0.5))
+    while cols * cols < layers_per_page:
+        cols += 1
+    rows = (layers_per_page + cols - 1) // cols
+    page_width = cols * thumb_size
+    page_height = rows * thumb_size
+    total = store.count_assets()
+    assets = store.list_assets(limit=total, offset=0) if total > 0 else []
+    ordered_assets = sorted(assets, key=atlas_sort_key)
+    page_count = (len(ordered_assets) + layers_per_page - 1) // layers_per_page
+    output_dir = texture_array_dir(
+        asset_root,
+        thumb_size=thumb_size,
+        layers_per_page=layers_per_page,
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    entries: list[dict[str, object]] = []
+    pages: list[dict[str, object]] = []
+    for page_index in range(page_count):
+        page_assets = ordered_assets[
+            page_index * layers_per_page : (page_index + 1) * layers_per_page
+        ]
+        page_path = texture_array_page_path(
+            asset_root,
+            page_index=page_index,
+            thumb_size=thumb_size,
+            layers_per_page=layers_per_page,
+        )
+        if not page_path.is_file():
+            write_texture_array_source_page(
+                page_path,
+                page_assets,
+                asset_root=asset_root,
+                thumb_size=thumb_size,
+                page_width=page_width,
+                page_height=page_height,
+                cols=cols,
+            )
+        pages.append(
+            {
+                "index": page_index,
+                "url": f"/api/texture-array/pages/thumb{thumb_size}-layers{layers_per_page}/page-{page_index}.jpg",
+                "width": page_width,
+                "height": page_height,
+                "layers": len(page_assets),
+            }
+        )
+        for layer, asset in enumerate(page_assets):
+            entries.append(
+                {
+                    "id": str(asset["id"]),
+                    "page": page_index,
+                    "layer": layer,
+                    "width": int(asset.get("width", thumb_size) or thumb_size),
+                    "height": int(asset.get("height", thumb_size) or thumb_size),
+                }
+            )
+    return {
+        "format": "rgba8-grid-jpeg",
+        "thumbSize": thumb_size,
+        "layersPerPage": layers_per_page,
+        "cols": cols,
+        "rows": rows,
+        "pageWidth": page_width,
+        "pageHeight": page_height,
+        "total": len(ordered_assets),
+        "pageCount": page_count,
+        "pages": pages,
+        "entries": entries,
+    }
+
+
+def write_texture_array_source_page(  # noqa: PLR0913
+    page_path: Path,
+    assets: Sequence[Mapping[str, object]],
+    *,
+    asset_root: Path,
+    thumb_size: int,
+    page_width: int,
+    page_height: int,
+    cols: int,
+) -> None:
+    """Write one grid page that the browser slices into texture-array layers."""
+    page = Image.new("RGB", (page_width, page_height), (0, 0, 0))
+    for cell_index, asset in enumerate(assets):
+        asset_id = str(asset["id"])
+        source = generated_asset_path(asset_root, asset_id, thumbnail=True)
+        if source is None or not source.is_file():
+            continue
+        with Image.open(source) as loaded:
+            thumbnail = loaded.convert("RGB")
+            thumbnail = cover_resize(thumbnail, thumb_size)
+            col = cell_index % cols
+            row = cell_index // cols
+            page.paste(thumbnail, (col * thumb_size, row * thumb_size))
+    temporary_path = page_path.with_suffix(".tmp.jpg")
+    page.save(temporary_path, format="JPEG", quality=88, optimize=True)
+    temporary_path.replace(page_path)
+
+
+def cover_resize(image: Image.Image, size: int) -> Image.Image:
+    """Return a square cover-cropped copy of an image."""
+    source_width, source_height = image.size
+    if source_width <= 0 or source_height <= 0:
+        return Image.new("RGB", (size, size), (0, 0, 0))
+    scale = max(size / source_width, size / source_height)
+    resized = image.resize(
+        (
+            max(size, round(source_width * scale)),
+            max(size, round(source_height * scale)),
+        ),
+        Image.Resampling.LANCZOS,
+    )
+    left = max(0, (resized.width - size) // 2)
+    top = max(0, (resized.height - size) // 2)
+    return resized.crop((left, top, left + size, top + size))
 
 
 def bounded_int(

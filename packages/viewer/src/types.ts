@@ -129,6 +129,11 @@ export interface SpriteOptions {
   billboard?: boolean;
   placeholderColor?: number;
   selectedColor?: number;
+  /** Use WebGL2 texture-array pages in LOD mode when supported. */
+  textureArray?: boolean;
+  textureArrayIndexUrl?: string;
+  textureArrayPageConcurrency?: number;
+  textureArrayMaxPages?: number;
   /** Use server-generated thumbnail atlas pages in LOD mode. */
   atlas?: boolean;
   atlasIndexUrl?: string;
@@ -184,6 +189,8 @@ export interface ViewerDebugStats {
     lastUpdateMs: number;
     atlasReady?: boolean;
     atlasPagesLoaded?: number;
+    textureArrayReady?: boolean;
+    textureArrayPagesLoaded?: number;
     textureQueue: TextureQueueDebugStats;
   };
 }

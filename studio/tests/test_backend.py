@@ -34,9 +34,14 @@ from constellation_studio.schema import (
 from constellation_studio.source_adapters import FolderSourceAdapter
 
 
-def create_image(path: Path, color: tuple[int, int, int]) -> None:
+def create_image(
+    path: Path,
+    color: tuple[int, int, int],
+    *,
+    size: tuple[int, int] = (8, 6),
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (8, 6), color).save(path)
+    Image.new("RGB", size, color).save(path)
 
 
 class BatchLimitedEmbedder:
@@ -466,6 +471,41 @@ def test_backend_builds_thumbnail_atlas(tmp_path: Path) -> None:
         assert isinstance(pages, list)
         page = pages[0]
         assert isinstance(page, dict)
+        page_bytes = fetch_bytes(f"{base_url}{page['url']}")
+        assert page_bytes.startswith(b"\xff\xd8")
+
+
+def test_backend_builds_texture_array_pages(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "wide.jpg", (255, 0, 0), size=(80, 40))
+    create_image(tmp_path / "photos" / "tall.jpg", (0, 255, 0), size=(40, 80))
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+
+        index = fetch_json(
+            f"{base_url}api/texture-array/index.json?thumbSize=64&layersPerPage=4"
+        )
+        assert isinstance(index, dict)
+        assert index["total"] == 2
+        assert index["pageCount"] == 1
+        assert index["thumbSize"] == 64
+        assert index["layersPerPage"] == 4
+        entries = index["entries"]
+        assert isinstance(entries, list)
+        assert {entry["layer"] for entry in entries} == {0, 1}
+        pages = index["pages"]
+        assert isinstance(pages, list)
+        page = pages[0]
+        assert isinstance(page, dict)
+        assert page["layers"] == 2
         page_bytes = fetch_bytes(f"{base_url}{page['url']}")
         assert page_bytes.startswith(b"\xff\xd8")
 

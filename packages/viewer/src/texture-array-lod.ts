@@ -1,8 +1,10 @@
 import {
   BufferGeometry,
+  DataArrayTexture,
   DoubleSide,
   DynamicDrawUsage,
   Float32BufferAttribute,
+  GLSL3,
   Group,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -16,9 +18,9 @@ import {
   Raycaster,
   Scene,
   ShaderMaterial,
+  RGBAFormat,
   SRGBColorSpace,
-  Texture,
-  TextureLoader,
+  UnsignedByteType,
   Vector2,
   Vector3,
 } from 'three';
@@ -32,65 +34,63 @@ import type {
   ViewerDebugStats,
 } from './types';
 
-interface AtlasIndexEntry {
+interface TextureArrayIndexEntry {
   id: string;
   page: number;
-  u0: number;
-  v0: number;
-  u1: number;
-  v1: number;
+  layer: number;
 }
 
-interface AtlasIndexPage {
+interface TextureArrayIndexPage {
   index: number;
   url: string;
+  layers: number;
 }
 
-interface AtlasIndex {
-  entries: AtlasIndexEntry[];
-  pages: AtlasIndexPage[];
-  pageCapacity: number;
+interface TextureArrayIndex {
+  entries: TextureArrayIndexEntry[];
+  pages: TextureArrayIndexPage[];
+  thumbSize: number;
+  layersPerPage: number;
+  cols: number;
 }
 
-interface AtlasRecord {
+interface TextureArrayRecord {
   image: PositionedImage;
   pointIndex: number;
   position: Vector3;
-  atlas?: AtlasIndexEntry;
+  textureArray?: TextureArrayIndexEntry;
   lastDistance: number;
   baseHeight: number;
 }
 
-interface AtlasPageView {
-  page: AtlasIndexPage;
-  texture: Texture;
+interface TextureArrayPageView {
+  page: TextureArrayIndexPage;
+  texture: DataArrayTexture;
   mesh: InstancedMesh<PlaneGeometry, ShaderMaterial>;
-  uvOffset: InstancedBufferAttribute;
-  uvScale: InstancedBufferAttribute;
+  layer: InstancedBufferAttribute;
   visibleIds: Set<string>;
   lastUsedFrame: number;
 }
 
-export interface AtlasLodManagerOptions extends SpriteOptions {
+export interface TextureArrayLodManagerOptions extends SpriteOptions {
   onSelect?: (image: ConstellationImage) => void;
   onHover?: (image: ConstellationImage | null) => void;
 }
 
-export class AtlasLodManager {
+export class TextureArrayLodManager {
   private readonly group = new Group();
   private readonly cardGroup = new Group();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
   private readonly spriteOffset = new Vector3();
-  private readonly records = new Map<string, AtlasRecord>();
-  private readonly recordsByPointIndex: AtlasRecord[] = [];
-  private readonly loader = new TextureLoader();
+  private readonly records = new Map<string, TextureArrayRecord>();
+  private readonly recordsByPointIndex: TextureArrayRecord[] = [];
   private readonly pageQueue: number[] = [];
   private readonly pageQueued = new Set<number>();
   private readonly pageLoading = new Set<number>();
-  private readonly pageViews = new Map<number, AtlasPageView>();
-  private readonly pageByIndex = new Map<number, AtlasIndexPage>();
+  private readonly pageViews = new Map<number, TextureArrayPageView>();
+  private readonly pageByIndex = new Map<number, TextureArrayIndexPage>();
   private readonly domElement: HTMLElement;
   private readonly options: Required<
     Omit<
@@ -102,22 +102,25 @@ export class AtlasLodManager {
       | 'pointColor'
       | 'textureArray'
       | 'textureArrayIndexUrl'
+      | 'atlas'
+      | 'atlasIndexUrl'
+      | 'atlasPageConcurrency'
+      | 'atlasMaxPages'
       | 'textureArrayPageConcurrency'
       | 'textureArrayMaxPages'
-      | 'atlasIndexUrl'
     >
   > & {
     selectedColor: number;
     textureUnloadDistance: number;
     pointColor: number;
-    atlasIndexUrl: string;
-    atlasPageConcurrency: number;
-    atlasMaxPages: number;
+    textureArrayIndexUrl: string;
+    textureArrayPageConcurrency: number;
+    textureArrayMaxPages: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
   private points: Points<BufferGeometry, PointsMaterial> | null = null;
-  private atlasIndex: AtlasIndex | null = null;
+  private textureArrayIndex: TextureArrayIndex | null = null;
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
   private updateAccumulator = 0.25;
@@ -126,14 +129,14 @@ export class AtlasLodManager {
   private totalPageRequests = 0;
   private totalPageLoads = 0;
   private totalPageErrors = 0;
-  private desiredRecords: AtlasRecord[] = [];
+  private desiredRecords: TextureArrayRecord[] = [];
   private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
     private readonly scene: Scene,
     domElement: HTMLElement,
     images: PositionedImage[],
-    options: AtlasLodManagerOptions = {},
+    options: TextureArrayLodManagerOptions = {},
   ) {
     this.domElement = domElement;
     const lazyLoadDistance = options.lazyLoadDistance ?? 180;
@@ -154,10 +157,9 @@ export class AtlasLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
-      atlas: options.atlas ?? true,
-      atlasIndexUrl: options.atlasIndexUrl ?? '/api/atlas/index.json',
-      atlasPageConcurrency: options.atlasPageConcurrency ?? 4,
-      atlasMaxPages: options.atlasMaxPages ?? 16,
+      textureArrayIndexUrl: options.textureArrayIndexUrl ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
+      textureArrayPageConcurrency: options.textureArrayPageConcurrency ?? 4,
+      textureArrayMaxPages: options.textureArrayMaxPages ?? 16,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
@@ -166,7 +168,7 @@ export class AtlasLodManager {
     this.group.add(this.cardGroup);
     this.scene.add(this.group);
     this.setImages(images);
-    this.loadAtlasIndex();
+    this.loadTextureArrayIndex();
 
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onClick = this.onClick.bind(this);
@@ -183,7 +185,7 @@ export class AtlasLodManager {
       positions[index * 3 + 2] = image.position[2];
       const position = new Vector3(image.position[0], image.position[1], image.position[2]);
       const [, baseHeight] = this.getCardDimensions(image);
-      const record: AtlasRecord = { image, pointIndex: index, position, lastDistance: Infinity, baseHeight };
+      const record: TextureArrayRecord = { image, pointIndex: index, position, lastDistance: Infinity, baseHeight };
       this.records.set(image.id, record);
       this.recordsByPointIndex[index] = record;
     }
@@ -200,7 +202,7 @@ export class AtlasLodManager {
     });
     this.points = new Points(geometry, material);
     this.group.add(this.points);
-    if (this.atlasIndex) this.applyAtlasIndex(this.atlasIndex);
+    if (this.textureArrayIndex) this.applyTextureArrayIndex(this.textureArrayIndex);
   }
 
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
@@ -223,7 +225,7 @@ export class AtlasLodManager {
       const record = this.records.get(id);
       if (record) {
         this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
-        if (record.atlas) this.requestPage(record.atlas.page);
+        if (record.textureArray) this.requestPage(record.textureArray.page);
       }
     }
   }
@@ -246,8 +248,8 @@ export class AtlasLodManager {
     if (!camera) {
       return {
         ...(this.debugStats ?? this.emptyDebugStats()),
-        atlasReady: this.atlasIndex !== null,
-        atlasPagesLoaded: this.pageViews.size,
+        textureArrayReady: this.textureArrayIndex !== null,
+        textureArrayPagesLoaded: this.pageViews.size,
         textureQueue: this.textureQueueStats(),
       };
     }
@@ -265,23 +267,23 @@ export class AtlasLodManager {
     this.pageViews.clear();
   }
 
-  private async loadAtlasIndex(): Promise<void> {
+  private async loadTextureArrayIndex(): Promise<void> {
     try {
-      const response = await fetch(this.options.atlasIndexUrl);
+      const response = await fetch(this.options.textureArrayIndexUrl);
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-      const loaded = await response.json() as AtlasIndex;
-      this.atlasIndex = loaded;
-      this.applyAtlasIndex(loaded);
+      const loaded = await response.json() as TextureArrayIndex;
+      this.textureArrayIndex = loaded;
+      this.applyTextureArrayIndex(loaded);
     } catch (error) {
-      console.warn('atlas index unavailable; falling back to points only', error);
+      console.warn('textureArray index unavailable; falling back to points only', error);
     }
   }
 
-  private applyAtlasIndex(index: AtlasIndex): void {
+  private applyTextureArrayIndex(index: TextureArrayIndex): void {
     this.pageByIndex.clear();
     for (const page of index.pages) this.pageByIndex.set(page.index, page);
     const entryById = new Map(index.entries.map((entry) => [entry.id, entry]));
-    for (const record of this.records.values()) record.atlas = entryById.get(record.image.id);
+    for (const record of this.records.values()) record.textureArray = entryById.get(record.image.id);
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (camera) this.updateCards(camera.position, camera.quaternion);
   }
@@ -292,18 +294,18 @@ export class AtlasLodManager {
     for (const record of records) record.lastDistance = record.position.distanceTo(cameraPosition);
 
     this.desiredRecords = records
-      .filter((record) => record.atlas && record.lastDistance <= this.options.lazyLoadDistance)
+      .filter((record) => record.textureArray && record.lastDistance <= this.options.lazyLoadDistance)
       .sort((a, b) => a.lastDistance - b.lastDistance)
       .slice(0, this.options.maxTexturedCards);
     if (this.selectedId) {
       const selected = this.records.get(this.selectedId);
-      if (selected?.atlas && !this.desiredRecords.some((record) => record.image.id === selected.image.id)) {
+      if (selected?.textureArray && !this.desiredRecords.some((record) => record.image.id === selected.image.id)) {
         this.desiredRecords.unshift(selected);
       }
     }
 
     for (const record of this.desiredRecords) {
-      if (record.atlas) this.requestPage(record.atlas.page);
+      if (record.textureArray) this.requestPage(record.textureArray.page);
     }
     this.evictUnusedPages();
     this.rebuildPageInstances(cameraQuaternion);
@@ -320,7 +322,7 @@ export class AtlasLodManager {
   }
 
   private pumpPageQueue(): void {
-    while (this.activePageLoads < this.options.atlasPageConcurrency && this.pageQueue.length > 0) {
+    while (this.activePageLoads < this.options.textureArrayPageConcurrency && this.pageQueue.length > 0) {
       const pageIndex = this.pageQueue.shift();
       if (pageIndex === undefined) continue;
       const page = this.pageByIndex.get(pageIndex);
@@ -328,60 +330,50 @@ export class AtlasLodManager {
       if (!page || this.pageViews.has(pageIndex)) continue;
       this.activePageLoads += 1;
       this.pageLoading.add(pageIndex);
-      this.loader.load(
-        page.url,
-        (texture) => {
+      void loadTextureArrayPage(page, this.textureArrayIndex!)
+        .then((texture) => {
           this.activePageLoads -= 1;
           this.pageLoading.delete(pageIndex);
-          texture.colorSpace = SRGBColorSpace;
-          texture.minFilter = LinearFilter;
-          texture.magFilter = LinearFilter;
-          texture.needsUpdate = true;
           this.totalPageLoads += 1;
           this.addPageView(page, texture);
           const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
           if (camera) this.rebuildPageInstances(camera.quaternion);
           this.pumpPageQueue();
-        },
-        undefined,
-        () => {
+        })
+        .catch(() => {
           this.activePageLoads -= 1;
           this.pageLoading.delete(pageIndex);
           this.totalPageErrors += 1;
           this.pumpPageQueue();
-        },
-      );
+        });
     }
   }
 
-  private addPageView(page: AtlasIndexPage, texture: Texture): void {
+  private addPageView(page: TextureArrayIndexPage, texture: DataArrayTexture): void {
     if (this.pageViews.has(page.index)) {
       texture.dispose();
       return;
     }
     const geometry = new PlaneGeometry(1, 1);
-    const capacity = Math.max(1, this.atlasIndex?.pageCapacity ?? 1024);
-    const uvOffset = new InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
-    const uvScale = new InstancedBufferAttribute(new Float32Array(capacity * 2), 2);
-    uvOffset.setUsage(DynamicDrawUsage);
-    uvScale.setUsage(DynamicDrawUsage);
-    geometry.setAttribute('instanceUvOffset', uvOffset);
-    geometry.setAttribute('instanceUvScale', uvScale);
-    const material = createAtlasMaterial(texture);
+    const capacity = Math.max(1, this.textureArrayIndex?.layersPerPage ?? 256);
+    const layer = new InstancedBufferAttribute(new Float32Array(capacity), 1);
+    layer.setUsage(DynamicDrawUsage);
+    geometry.setAttribute('instanceLayer', layer);
+    const material = createTextureArrayMaterial(texture);
     const mesh = new InstancedMesh(geometry, material, capacity);
     mesh.count = 0;
     mesh.frustumCulled = false;
     this.cardGroup.add(mesh);
-    this.pageViews.set(page.index, { page, texture, mesh, uvOffset, uvScale, visibleIds: new Set(), lastUsedFrame: this.frame });
+    this.pageViews.set(page.index, { page, texture, mesh, layer, visibleIds: new Set(), lastUsedFrame: this.frame });
   }
 
   private rebuildPageInstances(cameraQuaternion: Quaternion): void {
-    const recordsByPage = new Map<number, AtlasRecord[]>();
+    const recordsByPage = new Map<number, TextureArrayRecord[]>();
     for (const record of this.desiredRecords) {
-      if (!record.atlas || !this.pageViews.has(record.atlas.page)) continue;
-      const pageRecords = recordsByPage.get(record.atlas.page) ?? [];
+      if (!record.textureArray || !this.pageViews.has(record.textureArray.page)) continue;
+      const pageRecords = recordsByPage.get(record.textureArray.page) ?? [];
       pageRecords.push(record);
-      recordsByPage.set(record.atlas.page, pageRecords);
+      recordsByPage.set(record.textureArray.page, pageRecords);
     }
 
     const scratch = new Object3D();
@@ -392,30 +384,28 @@ export class AtlasLodManager {
       view.mesh.count = Math.min(records.length, view.mesh.instanceMatrix.count);
       for (let index = 0; index < view.mesh.count; index += 1) {
         const record = records[index]!;
-        const atlas = record.atlas!;
+        const textureArray = record.textureArray!;
         const [width, height] = this.getCardDimensions(record.image);
         scratch.position.copy(record.position);
         scratch.quaternion.copy(cameraQuaternion);
         scratch.scale.set(width, height, 1);
         scratch.updateMatrix();
         view.mesh.setMatrixAt(index, scratch.matrix);
-        view.uvOffset.setXY(index, atlas.u0, atlas.v0);
-        view.uvScale.setXY(index, atlas.u1 - atlas.u0, atlas.v1 - atlas.v0);
+        view.layer.setX(index, textureArray.layer);
       }
       view.mesh.instanceMatrix.needsUpdate = true;
-      view.uvOffset.needsUpdate = true;
-      view.uvScale.needsUpdate = true;
+      view.layer.needsUpdate = true;
     }
   }
 
   private evictUnusedPages(): void {
-    if (this.pageViews.size <= this.options.atlasMaxPages) return;
-    const desiredPages = new Set(this.desiredRecords.map((record) => record.atlas?.page).filter((page): page is number => page !== undefined));
+    if (this.pageViews.size <= this.options.textureArrayMaxPages) return;
+    const desiredPages = new Set(this.desiredRecords.map((record) => record.textureArray?.page).filter((page): page is number => page !== undefined));
     const evictionCandidates = [...this.pageViews.values()]
       .filter((view) => !desiredPages.has(view.page.index))
       .sort((a, b) => a.lastUsedFrame - b.lastUsedFrame);
     for (const view of evictionCandidates) {
-      if (this.pageViews.size <= this.options.atlasMaxPages) return;
+      if (this.pageViews.size <= this.options.textureArrayMaxPages) return;
       this.cardGroup.remove(view.mesh);
       view.mesh.geometry.dispose();
       view.mesh.material.dispose();
@@ -445,8 +435,8 @@ export class AtlasLodManager {
       maxTexturedCards: this.options.maxTexturedCards,
       maxLoadedTextures: this.options.maxLoadedTextures,
       lastUpdateMs,
-      atlasReady: this.atlasIndex !== null,
-      atlasPagesLoaded: this.pageViews.size,
+      textureArrayReady: this.textureArrayIndex !== null,
+      textureArrayPagesLoaded: this.pageViews.size,
       textureQueue: this.textureQueueStats(),
     };
   }
@@ -463,8 +453,8 @@ export class AtlasLodManager {
       maxTexturedCards: this.options.maxTexturedCards,
       maxLoadedTextures: this.options.maxLoadedTextures,
       lastUpdateMs: 0,
-      atlasReady: false,
-      atlasPagesLoaded: 0,
+      textureArrayReady: false,
+      textureArrayPagesLoaded: 0,
       textureQueue: this.textureQueueStats(),
     };
   }
@@ -566,31 +556,80 @@ export class AtlasLodManager {
   }
 }
 
-function createAtlasMaterial(texture: Texture): ShaderMaterial {
+function createTextureArrayMaterial(texture: DataArrayTexture): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { map: { value: texture }, opacity: { value: 1 } },
+    glslVersion: GLSL3,
+    uniforms: { mapArray: { value: texture } },
     vertexShader: `
-      attribute vec2 instanceUvOffset;
-      attribute vec2 instanceUvScale;
-      varying vec2 vAtlasUv;
+      in float instanceLayer;
+      out vec2 vUv;
+      flat out int vLayer;
       void main() {
-        vAtlasUv = instanceUvOffset + uv * instanceUvScale;
+        vUv = uv;
+        vLayer = int(instanceLayer + 0.5);
         gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
-      uniform sampler2D map;
-      uniform float opacity;
-      varying vec2 vAtlasUv;
+      precision highp sampler2DArray;
+      uniform sampler2DArray mapArray;
+      in vec2 vUv;
+      flat in int vLayer;
+      out vec4 outColor;
       void main() {
-        vec4 color = texture2D(map, vAtlasUv);
-        gl_FragColor = vec4(color.rgb, color.a * opacity);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
+        vec4 color = texture(mapArray, vec3(vUv, float(vLayer)));
+        outColor = vec4(color.rgb, 1.0);
       }
     `,
-    transparent: true,
+    transparent: false,
     side: DoubleSide,
-    depthWrite: false,
+    depthWrite: true,
   });
+}
+
+async function loadTextureArrayPage(
+  page: TextureArrayIndexPage,
+  index: TextureArrayIndex,
+): Promise<DataArrayTexture> {
+  const response = await fetch(page.url);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  const bitmap = await createImageBitmap(await response.blob());
+  try {
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = bitmap.width;
+    sourceCanvas.height = bitmap.height;
+    const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    if (!sourceContext) throw new Error('2D canvas unavailable');
+    sourceContext.drawImage(bitmap, 0, 0);
+    const source = sourceContext.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    const layerCount = Math.max(1, page.layers);
+    const thumbSize = index.thumbSize;
+    const data = new Uint8Array(thumbSize * thumbSize * layerCount * 4);
+
+    for (let layer = 0; layer < layerCount; layer += 1) {
+      const col = layer % index.cols;
+      const row = Math.floor(layer / index.cols);
+      const sourceX = col * thumbSize;
+      const sourceY = row * thumbSize;
+      const layerOffset = layer * thumbSize * thumbSize * 4;
+      for (let y = 0; y < thumbSize; y += 1) {
+        const sourceOffset = ((sourceY + y) * bitmap.width + sourceX) * 4;
+        const targetOffset = layerOffset + y * thumbSize * 4;
+        data.set(source.subarray(sourceOffset, sourceOffset + thumbSize * 4), targetOffset);
+      }
+    }
+
+    const texture = new DataArrayTexture(data, thumbSize, thumbSize, layerCount);
+    texture.format = RGBAFormat;
+    texture.type = UnsignedByteType;
+    texture.colorSpace = SRGBColorSpace;
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+    texture.generateMipmaps = false;
+    texture.unpackAlignment = 1;
+    texture.needsUpdate = true;
+    return texture;
+  } finally {
+    bitmap.close();
+  }
 }

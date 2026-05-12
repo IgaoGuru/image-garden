@@ -23,6 +23,7 @@ interface PlayviewDebugSnapshot {
   resources: {
     assetPageRequests: number;
     atlasPageRequests: number;
+    textureArrayPageRequests: number;
     thumbnailRequests: number;
     fileRequests: number;
   };
@@ -161,6 +162,9 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
       backgroundColor: 0x000000,
       sprites: {
         renderMode: 'auto',
+        textureArray: true,
+        textureArrayPageConcurrency: 4,
+        textureArrayMaxPages: 40,
         atlas: true,
         atlasPageConcurrency: 6,
         atlasMaxPages: 24,
@@ -720,12 +724,14 @@ function readDebugSnapshot(): PlayviewDebugSnapshot {
   const fileRequests = resourceEntries.filter((entry) => entry.name.includes('/api/files/')).length;
   const assetPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/assets')).length;
   const atlasPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/atlas/pages')).length;
+  const textureArrayPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/texture-array/pages')).length;
   return {
     status: latestStatus,
     viewer: viewerInstance?.getDebugStats() ?? null,
     resources: {
       assetPageRequests,
       atlasPageRequests,
+      textureArrayPageRequests,
       thumbnailRequests,
       fileRequests,
     },
