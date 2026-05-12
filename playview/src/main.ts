@@ -173,7 +173,15 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         maxTexturedCards: 9_000,
         maxLoadedTextures: 9_000,
       },
-      layout: { center: false, scale: 2 },
+      layout: {
+        center: false,
+        scale: 2,
+        duplicateJitter: true,
+        duplicateJitterDistance: 12,
+        duplicateJitterMin: 50,
+        duplicateJitterHalfLife: 50,
+        duplicateJitterMax: 250,
+      },
     },
   );
   status.textContent = `${nextAssets.length} images`;

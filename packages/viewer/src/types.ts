@@ -84,6 +84,16 @@ export interface LayoutOptions {
   seed?: number;
   /** Center resulting coordinates around the origin. */
   center?: boolean;
+  /** Deterministically jitter near-duplicate precomputed positions to split same-coordinate stacks. */
+  duplicateJitter?: boolean;
+  /** Distance under which a point is considered part of a near-duplicate stack. Defaults to 12. */
+  duplicateJitterDistance?: number;
+  /** Minimum jitter magnitude in world units. Defaults to 50. */
+  duplicateJitterMin?: number;
+  /** Exponential half-life for additional jitter magnitude. Defaults to 50. */
+  duplicateJitterHalfLife?: number;
+  /** Optional cap for jitter magnitude in world units. Defaults to 250. */
+  duplicateJitterMax?: number;
   /** Separate nearby UMAP points after layout to reduce sprite overlap while preserving cluster anchors. Defaults to true for embedding-derived layouts. */
   collisionRelaxation?: boolean;
   /** Target minimum world-space distance between relaxed points. Defaults to 10. */
