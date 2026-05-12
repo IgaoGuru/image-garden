@@ -25,9 +25,11 @@
     "installer:reset": "bash scripts/dev-reset-install-state.sh",
     "playview:dev": "pnpm --filter @constellation/playview dev",
     "playview:build": "pnpm --filter @constellation/playview build",
-    "playview:typecheck": "pnpm --filter @constellation/playview typecheck"
+    "playview:typecheck": "pnpm --filter @constellation/playview typecheck",
+    "bench:runtime": "node scripts/benchmark-runtime.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "typescript": "^5.9.3"
   },
   "pnpm": {

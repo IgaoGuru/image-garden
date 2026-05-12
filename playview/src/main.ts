@@ -17,6 +17,18 @@ interface DesktopBridge {
   openImportStudio?: () => Promise<ImportResult | undefined>;
 }
 
+interface PlayviewDebugSnapshot {
+  status: ApiStatus | null;
+  viewer: ReturnType<ConstellationViewer['getDebugStats']> | null;
+  resources: {
+    assetPageRequests: number;
+    atlasPageRequests: number;
+    thumbnailRequests: number;
+    fileRequests: number;
+  };
+  pointerLock: boolean;
+}
+
 interface ImportResult {
   ok?: boolean;
   canceled?: boolean;
@@ -33,6 +45,7 @@ interface AssetPage {
 declare global {
   interface Window {
     constellationDesktop?: DesktopBridge;
+    imageGardenDebug?: () => PlayviewDebugSnapshot;
   }
 }
 
@@ -84,6 +97,8 @@ const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
 const minTutorialStepMs = 5_500;
 const assetPageSize = 5_000;
+
+window.imageGardenDebug = readDebugSnapshot;
 
 setupWindAmbience();
 
@@ -689,24 +704,33 @@ function stopLiveDebug(): void {
 async function refreshLiveDebug(): Promise<void> {
   const current = await fetchJson<ApiStatus>('/api/status').catch(() => null);
   if (current) latestStatus = current;
-  const resourceEntries = performance.getEntriesByType('resource');
-  const thumbnailRequests = resourceEntries.filter((entry) => entry.name.includes('/api/thumbnails/')).length;
-  const fileRequests = resourceEntries.filter((entry) => entry.name.includes('/api/files/')).length;
-  const assetPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/assets')).length;
   debug.textContent = JSON.stringify(
     {
+      ...readDebugSnapshot(),
       status: current,
-      viewer: viewerInstance?.getDebugStats() ?? null,
-      resources: {
-        assetPageRequests,
-        thumbnailRequests,
-        fileRequests,
-      },
-      pointerLock: document.pointerLockElement === root.querySelector('canvas'),
     },
     null,
     2,
   );
+}
+
+function readDebugSnapshot(): PlayviewDebugSnapshot {
+  const resourceEntries = performance.getEntriesByType('resource');
+  const thumbnailRequests = resourceEntries.filter((entry) => entry.name.includes('/api/thumbnails/')).length;
+  const fileRequests = resourceEntries.filter((entry) => entry.name.includes('/api/files/')).length;
+  const assetPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/assets')).length;
+  const atlasPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/atlas/pages')).length;
+  return {
+    status: latestStatus,
+    viewer: viewerInstance?.getDebugStats() ?? null,
+    resources: {
+      assetPageRequests,
+      atlasPageRequests,
+      thumbnailRequests,
+      fileRequests,
+    },
+    pointerLock: document.pointerLockElement === root.querySelector('canvas'),
+  };
 }
 
 function delay(ms: number): Promise<void> {
