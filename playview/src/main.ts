@@ -121,12 +121,12 @@ const windAmbienceUrl = '/audio/wind-ambience.mp3';
 const minTutorialStepMs = 5_500;
 const assetPageSize = 5_000;
 const defaultLayoutTuning: LayoutTuning = {
-  scale: 2,
+  scale: 7,
   duplicateJitter: true,
   duplicateJitterDistance: 8,
-  duplicateJitterMin: 8,
-  duplicateJitterHalfLife: 12,
-  duplicateJitterMax: 80,
+  duplicateJitterMin: 5,
+  duplicateJitterHalfLife: 8,
+  duplicateJitterMax: 10,
 };
 let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
 
