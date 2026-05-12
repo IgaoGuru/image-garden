@@ -577,7 +577,7 @@ function createTextureArrayMaterial(texture: DataArrayTexture): ShaderMaterial {
       flat in int vLayer;
       out vec4 outColor;
       void main() {
-        vec4 color = texture(mapArray, vec3(vUv, float(vLayer)));
+        vec4 color = texture(mapArray, vec3(vec2(vUv.x, 1.0 - vUv.y), float(vLayer)));
         outColor = vec4(color.rgb, 1.0);
       }
     `,
