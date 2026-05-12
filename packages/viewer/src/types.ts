@@ -129,6 +129,11 @@ export interface SpriteOptions {
   billboard?: boolean;
   placeholderColor?: number;
   selectedColor?: number;
+  /** Use server-generated thumbnail atlas pages in LOD mode. */
+  atlas?: boolean;
+  atlasIndexUrl?: string;
+  atlasPageConcurrency?: number;
+  atlasMaxPages?: number;
 }
 
 export interface ConstellationViewerOptions {
@@ -177,6 +182,8 @@ export interface ViewerDebugStats {
     maxTexturedCards: number;
     maxLoadedTextures: number;
     lastUpdateMs: number;
+    atlasReady?: boolean;
+    atlasPagesLoaded?: number;
     textureQueue: TextureQueueDebugStats;
   };
 }

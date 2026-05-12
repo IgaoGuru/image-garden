@@ -440,6 +440,36 @@ def test_backend_get_store_failure_returns_503(
         assert "database unavailable" in body["error"]
 
 
+def test_backend_builds_thumbnail_atlas(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+    create_image(tmp_path / "photos" / "two.jpg", (0, 255, 0))
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+
+        atlas = fetch_json(f"{base_url}api/atlas/index.json")
+        assert isinstance(atlas, dict)
+        assert atlas["total"] == 2
+        assert atlas["pageCount"] == 1
+        entries = atlas["entries"]
+        assert isinstance(entries, list)
+        assert len(entries) == 2
+        pages = atlas["pages"]
+        assert isinstance(pages, list)
+        page = pages[0]
+        assert isinstance(page, dict)
+        page_bytes = fetch_bytes(f"{base_url}{page['url']}")
+        assert page_bytes.startswith(b"\xff\xd8")
+
+
 def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:
     create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
     create_image(tmp_path / "photos" / "two.png", (0, 255, 0))

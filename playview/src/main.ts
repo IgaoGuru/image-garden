@@ -146,6 +146,11 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
       backgroundColor: 0x000000,
       sprites: {
         renderMode: 'auto',
+        atlas: true,
+        atlasPageConcurrency: 6,
+        atlasMaxPages: 24,
+        lazyLoadDistance: 1_000,
+        textureUnloadDistance: 1_200,
         maxTexturedCards: 9_000,
         maxLoadedTextures: 9_000,
       },

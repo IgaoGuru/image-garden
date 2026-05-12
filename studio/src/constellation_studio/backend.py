@@ -22,6 +22,8 @@ from socketserver import TCPServer
 from typing import ClassVar, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from PIL import Image
+
 from constellation_studio.embed import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_MODEL,
@@ -189,7 +191,7 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         """Write compact access logs to stderr."""
         print(f"{self.address_string()} - {format % args}", file=sys.stderr)
 
-    def _serve_get(self, *, send_body: bool) -> None:  # noqa: C901, PLR0911
+    def _serve_get(self, *, send_body: bool) -> None:  # noqa: C901, PLR0911, PLR0912
         split = urlsplit(self.path)
         route = split.path
         query = parse_qs(split.query)
@@ -217,6 +219,15 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/assets/near":
             self._get_near_assets(query, send_body=send_body)
+            return
+        if route == "/api/atlas/index.json":
+            self._get_atlas_index(query, send_body=send_body)
+            return
+        if route.startswith("/api/atlas/pages/"):
+            self._get_atlas_page(
+                route.removeprefix("/api/atlas/pages/"),
+                send_body=send_body,
+            )
             return
         if route.startswith("/api/assets/"):
             self._get_asset(
@@ -445,6 +456,39 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             {"assets": assets, "total": len(assets)}, send_body=send_body
         )
 
+    def _get_atlas_index(
+        self,
+        query: Mapping[str, list[str]],
+        *,
+        send_body: bool,
+    ) -> None:
+        thumb_size = bounded_int(query, "thumbSize", default=128, upper=512)
+        page_size = bounded_int(query, "pageSize", default=4096, upper=4096)
+        index = build_thumbnail_atlas_index(
+            self.store,
+            self.asset_root,
+            thumb_size=thumb_size,
+            page_size=page_size,
+        )
+        self._send_json(index, send_body=send_body)
+
+    def _get_atlas_page(self, raw_page: str, *, send_body: bool) -> None:
+        page_name = unquote(raw_page)
+        if not page_name.endswith(".jpg"):
+            self.send_error(HTTPStatus.NOT_FOUND, "not found")
+            return
+        page_stem = page_name.removesuffix(".jpg")
+        if not page_stem.startswith("page-"):
+            self.send_error(HTTPStatus.NOT_FOUND, "not found")
+            return
+        try:
+            page_index = int(page_stem.removeprefix("page-"))
+        except ValueError:
+            self.send_error(HTTPStatus.NOT_FOUND, "not found")
+            return
+        path = atlas_page_path(self.asset_root, page_index=page_index)
+        self._send_path_or_404(path, send_body=send_body)
+
     def _get_asset(self, raw_id: str, *, send_body: bool) -> None:
         asset = self.store.get_asset(unquote(raw_id))
         if asset is None:
@@ -591,10 +635,162 @@ def generated_asset_path(
     thumbnail: bool,
 ) -> Path | None:
     """Return deterministic generated asset path for folder-import hashes."""
-    if len(asset_id) != 64 or any(char not in "0123456789abcdef" for char in asset_id):
+    if len(asset_id) != 64 or any(
+        char not in "0123456789abcdef" for char in asset_id
+    ):
         return None
     directory = "thumbs" if thumbnail else "images"
     return asset_root / directory / f"{asset_id}.jpg"
+
+
+def atlas_dir(asset_root: Path, *, thumb_size: int = 128, page_size: int = 4096) -> Path:
+    """Return thumbnail atlas cache directory."""
+    return asset_root / "atlas" / f"thumb{thumb_size}-page{page_size}"
+
+
+def atlas_page_path(
+    asset_root: Path,
+    *,
+    page_index: int,
+    thumb_size: int = 128,
+    page_size: int = 4096,
+) -> Path:
+    """Return one thumbnail atlas page path."""
+    return atlas_dir(asset_root, thumb_size=thumb_size, page_size=page_size) / (
+        f"page-{page_index}.jpg"
+    )
+
+
+def build_thumbnail_atlas_index(
+    store: IndexStore,
+    asset_root: Path,
+    *,
+    thumb_size: int,
+    page_size: int,
+) -> dict[str, object]:
+    """Build/generate thumbnail atlas pages and return atlas metadata."""
+    cols = max(1, page_size // thumb_size)
+    rows = cols
+    page_capacity = cols * rows
+    total = store.count_assets()
+    assets = store.list_assets(limit=total, offset=0) if total > 0 else []
+    ordered_assets = sorted(assets, key=atlas_sort_key)
+    page_count = (len(ordered_assets) + page_capacity - 1) // page_capacity
+    output_dir = atlas_dir(
+        asset_root,
+        thumb_size=thumb_size,
+        page_size=page_size,
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    entries: list[dict[str, object]] = []
+    pages: list[dict[str, object]] = []
+    for page_index in range(page_count):
+        page_assets = ordered_assets[
+            page_index * page_capacity : (page_index + 1) * page_capacity
+        ]
+        page_path = atlas_page_path(
+            asset_root,
+            page_index=page_index,
+            thumb_size=thumb_size,
+            page_size=page_size,
+        )
+        if not page_path.is_file():
+            write_thumbnail_atlas_page(
+                page_path,
+                page_assets,
+                asset_root=asset_root,
+                thumb_size=thumb_size,
+                page_size=page_size,
+                cols=cols,
+            )
+        pages.append(
+            {
+                "index": page_index,
+                "url": f"/api/atlas/pages/page-{page_index}.jpg",
+                "width": page_size,
+                "height": page_size,
+            }
+        )
+        for cell_index, asset in enumerate(page_assets):
+            col = cell_index % cols
+            row = cell_index // cols
+            u0 = (col * thumb_size) / page_size
+            v0 = (row * thumb_size) / page_size
+            u1 = ((col + 1) * thumb_size) / page_size
+            v1 = ((row + 1) * thumb_size) / page_size
+            entries.append(
+                {
+                    "id": str(asset["id"]),
+                    "page": page_index,
+                    "u0": u0,
+                    "v0": v0,
+                    "u1": u1,
+                    "v1": v1,
+                }
+            )
+    return {
+        "thumbSize": thumb_size,
+        "pageSize": page_size,
+        "cols": cols,
+        "rows": rows,
+        "pageCapacity": page_capacity,
+        "total": len(ordered_assets),
+        "pageCount": page_count,
+        "pages": pages,
+        "entries": entries,
+    }
+
+
+def atlas_sort_key(asset: Mapping[str, object]) -> tuple[int, str]:
+    """Sort assets spatially so nearby thumbnails tend to share pages."""
+    position_obj = asset.get("position")
+    if not isinstance(position_obj, (list, tuple)) or len(position_obj) != 3:
+        return (0, str(asset.get("id", "")))
+    coords = [float(value) for value in position_obj]
+    # Layout coordinates are usually within a few hundred units; clamp to a
+    # stable cube before Morton interleaving for locality-preserving pages.
+    normalized = [max(0, min(1023, int((coord + 512.0) * 1023.0 / 1024.0))) for coord in coords]
+    return (morton3(normalized[0], normalized[1], normalized[2]), str(asset.get("id", "")))
+
+
+def morton3(x: int, y: int, z: int) -> int:
+    """Return a 30-bit Morton code for three 10-bit coordinates."""
+    code = 0
+    for bit in range(10):
+        code |= ((x >> bit) & 1) << (3 * bit)
+        code |= ((y >> bit) & 1) << (3 * bit + 1)
+        code |= ((z >> bit) & 1) << (3 * bit + 2)
+    return code
+
+
+def write_thumbnail_atlas_page(  # noqa: PLR0913
+    page_path: Path,
+    assets: Sequence[Mapping[str, object]],
+    *,
+    asset_root: Path,
+    thumb_size: int,
+    page_size: int,
+    cols: int,
+) -> None:
+    """Write one square JPEG atlas page from generated thumbnails."""
+    page = Image.new("RGB", (page_size, page_size), (0, 0, 0))
+    for cell_index, asset in enumerate(assets):
+        asset_id = str(asset["id"])
+        source = generated_asset_path(asset_root, asset_id, thumbnail=True)
+        if source is None or not source.is_file():
+            continue
+        with Image.open(source) as loaded:
+            thumbnail = loaded.convert("RGB")
+            thumbnail.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+            col = cell_index % cols
+            row = cell_index // cols
+            x = col * thumb_size + (thumb_size - thumbnail.width) // 2
+            y = row * thumb_size + (thumb_size - thumbnail.height) // 2
+            page.paste(thumbnail, (x, y))
+    temporary_path = page_path.with_suffix(".tmp.jpg")
+    page.save(temporary_path, format="JPEG", quality=82, optimize=True)
+    temporary_path.replace(page_path)
 
 
 def bounded_int(

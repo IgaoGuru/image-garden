@@ -49,7 +49,16 @@ export class PointLodManager {
   private readonly options: Required<
     Omit<
       SpriteOptions,
-      'renderMode' | 'lodThreshold' | 'selectedColor' | 'maxTexturedCards' | 'textureUnloadDistance' | 'pointColor'
+      | 'renderMode'
+      | 'lodThreshold'
+      | 'selectedColor'
+      | 'maxTexturedCards'
+      | 'textureUnloadDistance'
+      | 'pointColor'
+      | 'atlas'
+      | 'atlasIndexUrl'
+      | 'atlasPageConcurrency'
+      | 'atlasMaxPages'
     >
   > & {
     selectedColor: number;
