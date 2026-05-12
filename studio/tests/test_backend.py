@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -372,6 +373,71 @@ def test_backend_serves_playview_public_audio(tmp_path: Path) -> None:
         playview_dist=create_playview_dist(tmp_path / "playview-dist"),
     ) as base_url:
         assert fetch_bytes(f"{base_url}audio/wind-ambience.mp3") == b"fake mp3"
+
+
+def test_backend_serves_generated_files_without_sqlite_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+
+        listed = fetch_json(f"{base_url}api/assets?limit=1")
+        assert isinstance(listed, dict)
+        asset = listed["assets"][0]
+        asset_id = asset["id"]
+
+        def fail_path_lookup(self: IndexStore, asset_id: str) -> Path | None:
+            _ = self, asset_id
+            raise sqlite3.OperationalError("database unavailable")
+
+        monkeypatch.setattr(
+            IndexStore,
+            "asset_thumbnail_path",
+            fail_path_lookup,
+        )
+        monkeypatch.setattr(IndexStore, "asset_file_path", fail_path_lookup)
+
+        thumbnail_bytes = fetch_bytes(f"{base_url}api/thumbnails/{asset_id}")
+        file_bytes = fetch_bytes(f"{base_url}api/files/{asset_id}")
+
+        assert thumbnail_bytes.startswith(b"\xff\xd8")
+        assert file_bytes.startswith(b"\xff\xd8")
+
+
+def test_backend_get_store_failure_returns_503(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_list_assets(
+        self: IndexStore,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[object]:
+        _ = self, limit, offset
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(IndexStore, "list_assets", fail_list_assets)
+
+    with run_test_backend(data_dir=tmp_path / "app-data") as base_url:
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            fetch_json(f"{base_url}api/assets")
+
+        assert exc_info.value.code == 503
+        body = json.loads(exc_info.value.read().decode("utf-8"))
+        assert body["ok"] is False
+        assert "database unavailable" in body["error"]
 
 
 def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:

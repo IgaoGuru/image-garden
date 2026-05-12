@@ -23,6 +23,13 @@ interface ImportResult {
   error?: string;
 }
 
+interface AssetPage {
+  assets?: RuntimeAsset[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+}
+
 declare global {
   interface Window {
     constellationDesktop?: DesktopBridge;
@@ -75,6 +82,7 @@ const progressLogEntries: string[] = [];
 const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
 const minTutorialStepMs = 5_500;
+const assetPageSize = 5_000;
 
 setupWindAmbience();
 
@@ -88,11 +96,11 @@ void boot();
 
 async function boot(): Promise<void> {
   try {
-    const [assetPayload, initialStatus] = await Promise.all([
-      fetchJson<{ assets?: RuntimeAsset[] }>('/api/assets?limit=5000'),
+    const [loadedAssets, initialStatus] = await Promise.all([
+      fetchAllAssets(),
       fetchJson<ApiStatus>('/api/status').catch(() => null),
     ]);
-    assets = assetPayload.assets ?? [];
+    assets = loadedAssets;
     latestStatus = initialStatus;
     if (assets.length > 0) {
       mountViewer(assets);
@@ -107,6 +115,25 @@ async function boot(): Promise<void> {
     status.textContent = `startup failed: ${errorMessage(error)}`;
     showOnboarding();
   }
+}
+
+async function fetchAllAssets(): Promise<RuntimeAsset[]> {
+  const loaded: RuntimeAsset[] = [];
+  let offset = 0;
+  let total: number | null = null;
+
+  while (total === null || offset < total) {
+    const payload = await fetchJson<AssetPage>(`/api/assets?limit=${assetPageSize}&offset=${offset}`);
+    const page = payload.assets ?? [];
+    loaded.push(...page);
+    offset += page.length;
+    if (typeof payload.total === 'number') total = payload.total;
+    if (page.length === 0 || page.length < assetPageSize) break;
+    if (total !== null && total > assetPageSize) status.textContent = `loading catalog ${loaded.length}/${total}`;
+    await delay(0);
+  }
+
+  return loaded;
 }
 
 function mountViewer(nextAssets: RuntimeAsset[]): void {

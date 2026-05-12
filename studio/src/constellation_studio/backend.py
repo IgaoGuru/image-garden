@@ -100,11 +100,37 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Serve a GET request."""
-        self._serve_get(send_body=True)
+        self._serve_read_request(send_body=True)
 
     def do_HEAD(self) -> None:
         """Serve a HEAD request."""
-        self._serve_get(send_body=False)
+        self._serve_read_request(send_body=False)
+
+    def _serve_read_request(self, *, send_body: bool) -> None:
+        """Serve a read request without leaking handler tracebacks."""
+        try:
+            self._serve_get(send_body=send_body)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except (OSError, RuntimeError, sqlite3.Error) as exc:
+            self._send_read_error(exc, send_body=send_body)
+
+    def _send_read_error(
+        self,
+        exc: Exception,
+        *,
+        send_body: bool,
+    ) -> None:
+        """Return a clean read-side failure response."""
+        route = urlsplit(self.path).path
+        if route.startswith("/api/"):
+            self._send_json(
+                {"ok": False, "error": str(exc)},
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+                send_body=send_body,
+            )
+            return
+        self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, str(exc))
 
     def do_POST(self) -> None:  # noqa: C901, PLR0911
         """Serve local API mutation requests."""
@@ -140,6 +166,12 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
                 self.store.set_paused(paused=False)
                 self._send_json({"ok": True, "status": self.store.status()})
                 return
+        except sqlite3.Error as exc:
+            self._send_json(
+                {"ok": False, "error": str(exc)},
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return
         except (
             OSError,
             RuntimeError,
@@ -428,6 +460,15 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         send_body: bool,
     ) -> None:
         asset_id = unquote(raw_id)
+        deterministic_path = generated_asset_path(
+            self.asset_root,
+            asset_id,
+            thumbnail=thumbnail,
+        )
+        if deterministic_path is not None and deterministic_path.is_file():
+            self._send_path_or_404(deterministic_path, send_body=send_body)
+            return
+
         path = (
             self.store.asset_thumbnail_path(asset_id)
             if thumbnail
@@ -473,7 +514,27 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         content_type = (
             mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         )
-        self._send_bytes(path.read_bytes(), content_type, send_body=send_body)
+        self._send_file(path, content_type, send_body=send_body)
+
+    def _send_file(
+        self,
+        path: Path,
+        content_type: str,
+        *,
+        send_body: bool,
+    ) -> None:
+        """Stream a local file without loading it all into memory."""
+        size = path.stat().st_size
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(size))
+        self.send_header("Cache-Control", "no-store")
+        self._send_cors_headers()
+        self.end_headers()
+        if not send_body:
+            return
+        with path.open("rb") as file:
+            shutil.copyfileobj(file, self.wfile)
 
     def _send_json(
         self,
@@ -521,6 +582,19 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             msg = "request body must be a JSON object"
             raise ValueError(msg)
         return cast("Mapping[str, object]", loaded)
+
+
+def generated_asset_path(
+    asset_root: Path,
+    asset_id: str,
+    *,
+    thumbnail: bool,
+) -> Path | None:
+    """Return deterministic generated asset path for folder-import hashes."""
+    if len(asset_id) != 64 or any(char not in "0123456789abcdef" for char in asset_id):
+        return None
+    directory = "thumbs" if thumbnail else "images"
+    return asset_root / directory / f"{asset_id}.jpg"
 
 
 def bounded_int(
