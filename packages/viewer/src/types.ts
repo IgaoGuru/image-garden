@@ -145,12 +145,12 @@ export interface SpriteOptions {
   billboard?: boolean;
   placeholderColor?: number;
   selectedColor?: number;
-  /** Use WebGL2 texture-array pages in LOD mode when supported. */
+  /** Use WebGL2 texture-array pages in LOD mode when supported. Requires `textureArrayIndexUrl`. */
   textureArray?: boolean;
   textureArrayIndexUrl?: string;
   textureArrayPageConcurrency?: number;
   textureArrayMaxPages?: number;
-  /** Use server-generated thumbnail atlas pages in LOD mode. */
+  /** Use server-generated thumbnail atlas pages in LOD mode. Requires `atlasIndexUrl`. */
   atlas?: boolean;
   atlasIndexUrl?: string;
   atlasPageConcurrency?: number;

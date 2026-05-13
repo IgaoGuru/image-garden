@@ -179,12 +179,17 @@ class ConstellationViewerImpl implements ConstellationViewer {
     if (!useLod) {
       return new SpriteManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
     }
-    if (this.options.sprites?.textureArray === true && this.sceneHost.renderer.capabilities.isWebGL2) {
+    if (
+      this.options.sprites?.textureArray === true
+      && this.options.sprites.textureArrayIndexUrl
+      && this.sceneHost.renderer.capabilities.isWebGL2
+    ) {
       return new TextureArrayLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
     }
-    return this.options.sprites?.atlas === false
-      ? new PointLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions)
-      : new AtlasLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
+    if (this.options.sprites?.atlas === true && this.options.sprites.atlasIndexUrl) {
+      return new AtlasLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
+    }
+    return new PointLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
   }
 }
 

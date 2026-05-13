@@ -218,9 +218,11 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
       sprites: {
         renderMode: 'auto',
         textureArray: true,
+        textureArrayIndexUrl: '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
         textureArrayPageConcurrency: 4,
         textureArrayMaxPages: 40,
         atlas: true,
+        atlasIndexUrl: '/api/atlas/index.json',
         atlasPageConcurrency: 6,
         atlasMaxPages: 24,
         lazyLoadDistance: layoutTuning.lazyLoadDistance,
