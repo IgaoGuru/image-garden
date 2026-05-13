@@ -88,6 +88,7 @@ export class TextureArrayLodManager {
   private readonly cameraForward = new Vector3();
   private readonly spriteOffset = new Vector3();
   private readonly projectionView = new Matrix4();
+  private readonly cullProjection = new Matrix4();
   private readonly frustum = new Frustum();
   private readonly boundsSphere = new Sphere();
   private readonly records = new Map<string, TextureArrayRecord>();
@@ -108,6 +109,7 @@ export class TextureArrayLodManager {
       | 'pointColor'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
+      | 'frustumCullMargin'
       | 'textureArray'
       | 'textureArrayIndexUrl'
       | 'atlas'
@@ -123,6 +125,7 @@ export class TextureArrayLodManager {
     pointColor: number;
     minCardScreenHeightPx: number;
     frustumCullCards: boolean;
+    frustumCullMargin: number;
     textureArrayIndexUrl: string;
     textureArrayPageConcurrency: number;
     textureArrayMaxPages: number;
@@ -172,6 +175,7 @@ export class TextureArrayLodManager {
       pointPickRadius: options.pointPickRadius ?? 8,
       minCardScreenHeightPx: options.minCardScreenHeightPx ?? 0,
       frustumCullCards: options.frustumCullCards ?? true,
+      frustumCullMargin: options.frustumCullMargin ?? 0.1,
       textureArrayIndexUrl: options.textureArrayIndexUrl ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
       textureArrayPageConcurrency: options.textureArrayPageConcurrency ?? 4,
       textureArrayMaxPages: options.textureArrayMaxPages ?? 16,
@@ -308,7 +312,7 @@ export class TextureArrayLodManager {
     const records = [...this.records.values()];
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.cameraForward).normalize();
-    this.projectionView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.projectionView.multiplyMatrices(this.cullingProjectionMatrix(camera), camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.projectionView);
 
     let frustumCulledCount = 0;
@@ -440,6 +444,23 @@ export class TextureArrayLodManager {
     }
   }
 
+  private cullingProjectionMatrix(camera: PerspectiveCamera): Matrix4 {
+    const margin = Math.max(0, this.options.frustumCullMargin);
+    if (margin <= 0) return camera.projectionMatrix;
+    const fovRadians = (camera.fov * Math.PI) / 180;
+    const expandedFov = (Math.atan(Math.tan(fovRadians / 2) * (1 + margin)) * 2 * 180) / Math.PI;
+    const expandedAspect = camera.aspect * (1 + margin);
+    return this.cullProjection.makePerspective(
+      -camera.near * Math.tan((expandedFov * Math.PI) / 360) * expandedAspect,
+      camera.near * Math.tan((expandedFov * Math.PI) / 360) * expandedAspect,
+      camera.near * Math.tan((expandedFov * Math.PI) / 360),
+      -camera.near * Math.tan((expandedFov * Math.PI) / 360),
+      camera.near,
+      camera.far,
+      camera.coordinateSystem,
+    );
+  }
+
   private screenHeightPx(record: TextureArrayRecord, worldHeight: number, camera: PerspectiveCamera): number {
     this.spriteOffset.subVectors(record.position, camera.position);
     const depth = this.spriteOffset.dot(this.cameraForward);
@@ -484,6 +505,7 @@ export class TextureArrayLodManager {
       visibleCandidateCount: this.lastVisibleCandidateCount,
       frustumCulledCount: this.lastFrustumCulledCount,
       screenSizeCulledCount: this.lastScreenSizeCulledCount,
+      frustumCullMargin: this.options.frustumCullMargin,
       minCardScreenHeightPx: this.options.minCardScreenHeightPx,
       lazyLoadDistance: this.options.lazyLoadDistance,
       textureUnloadDistance: this.options.textureUnloadDistance,
@@ -506,6 +528,7 @@ export class TextureArrayLodManager {
       visibleCandidateCount: 0,
       frustumCulledCount: 0,
       screenSizeCulledCount: 0,
+      frustumCullMargin: this.options.frustumCullMargin,
       minCardScreenHeightPx: this.options.minCardScreenHeightPx,
       lazyLoadDistance: this.options.lazyLoadDistance,
       textureUnloadDistance: this.options.textureUnloadDistance,

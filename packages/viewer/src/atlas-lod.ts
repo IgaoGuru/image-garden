@@ -102,6 +102,7 @@ export class AtlasLodManager {
       | 'pointColor'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
+      | 'frustumCullMargin'
       | 'textureArray'
       | 'textureArrayIndexUrl'
       | 'textureArrayPageConcurrency'

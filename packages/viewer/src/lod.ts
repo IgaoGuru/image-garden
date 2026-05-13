@@ -57,6 +57,7 @@ export class PointLodManager {
       | 'pointColor'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
+      | 'frustumCullMargin'
       | 'textureArray'
       | 'textureArrayIndexUrl'
       | 'textureArrayPageConcurrency'

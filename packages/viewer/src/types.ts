@@ -138,6 +138,8 @@ export interface SpriteOptions {
   minCardScreenHeightPx?: number;
   /** Skip textured-card promotion for records outside the camera frustum. Defaults to true. */
   frustumCullCards?: boolean;
+  /** Extra culling frustum margin as a fraction of camera FOV/aspect. Defaults to 0.1. */
+  frustumCullMargin?: number;
   /** Maximum fraction of viewport height a sprite may occupy before it shrinks. Set to Infinity to disable. */
   maxViewportHeight?: number;
   billboard?: boolean;
@@ -199,6 +201,7 @@ export interface ViewerDebugStats {
     visibleCandidateCount?: number;
     frustumCulledCount?: number;
     screenSizeCulledCount?: number;
+    frustumCullMargin?: number;
     minCardScreenHeightPx?: number;
     lazyLoadDistance: number;
     textureUnloadDistance: number;

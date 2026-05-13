@@ -53,6 +53,7 @@ interface LayoutTuning {
   lazyLoadDistance: number;
   textureUnloadDistance: number;
   minCardScreenHeightPx: number;
+  frustumCullMargin: number;
   maxTexturedCards: number;
   frustumCullCards: boolean;
 }
@@ -94,6 +95,8 @@ const lodUnloadDistanceInput = mustQuery<HTMLInputElement>('#lod-unload-distance
 const lodUnloadDistanceValue = mustQuery<HTMLOutputElement>('#lod-unload-distance-value');
 const lodMinScreenHeightInput = mustQuery<HTMLInputElement>('#lod-min-screen-height');
 const lodMinScreenHeightValue = mustQuery<HTMLOutputElement>('#lod-min-screen-height-value');
+const lodFrustumMarginInput = mustQuery<HTMLInputElement>('#lod-frustum-margin');
+const lodFrustumMarginValue = mustQuery<HTMLOutputElement>('#lod-frustum-margin-value');
 const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
 const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
 const lodFrustumEnabled = mustQuery<HTMLInputElement>('#lod-frustum-enabled');
@@ -144,6 +147,7 @@ const defaultLayoutTuning: LayoutTuning = {
   lazyLoadDistance: 1_000,
   textureUnloadDistance: 1_200,
   minCardScreenHeightPx: 20,
+  frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
   frustumCullCards: true,
 };
@@ -225,6 +229,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         maxLoadedTextures: layoutTuning.maxTexturedCards,
         minCardScreenHeightPx: layoutTuning.minCardScreenHeightPx,
         frustumCullCards: layoutTuning.frustumCullCards,
+        frustumCullMargin: layoutTuning.frustumCullMargin,
       },
       layout: currentLayoutOptions(),
     },
@@ -298,6 +303,7 @@ function setupLayoutControls(): void {
     lodDistanceInput,
     lodUnloadDistanceInput,
     lodMinScreenHeightInput,
+    lodFrustumMarginInput,
     lodMaxCardsInput,
     lodFrustumEnabled,
   ]) {
@@ -336,6 +342,7 @@ function readLayoutControls(): LayoutTuning {
     lazyLoadDistance: numericInput(lodDistanceInput, defaultLayoutTuning.lazyLoadDistance),
     textureUnloadDistance: numericInput(lodUnloadDistanceInput, defaultLayoutTuning.textureUnloadDistance),
     minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
+    frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
     maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
     frustumCullCards: lodFrustumEnabled.checked,
   };
@@ -359,6 +366,8 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   lodUnloadDistanceValue.value = tuning.textureUnloadDistance.toFixed(0);
   lodMinScreenHeightInput.value = String(tuning.minCardScreenHeightPx);
   lodMinScreenHeightValue.value = `${tuning.minCardScreenHeightPx.toFixed(0)}px`;
+  lodFrustumMarginInput.value = String(tuning.frustumCullMargin);
+  lodFrustumMarginValue.value = `${Math.round(tuning.frustumCullMargin * 100)}%`;
   lodMaxCardsInput.value = String(tuning.maxTexturedCards);
   lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
   lodFrustumEnabled.checked = tuning.frustumCullCards;
