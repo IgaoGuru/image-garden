@@ -35,14 +35,16 @@ viewer.destroy();
 For a local HTTP backend implementing the Studio/Image Garden API adapter:
 
 ```ts
-import { createFetchDataSource, mountFromDataSource } from '@constellation/viewer';
+import { createStudioDataSource, mountFromDataSource } from '@constellation/viewer';
 
-await mountFromDataSource(el, createFetchDataSource({ baseUrl: 'http://127.0.0.1:8000' }));
+await mountFromDataSource(el, createStudioDataSource({ baseUrl: 'http://127.0.0.1:8000' }));
 ```
 
 Custom hosts can keep the same parser and provide explicit endpoint paths:
 
 ```ts
+import { createFetchDataSource } from '@constellation/viewer';
+
 createFetchDataSource({
   baseUrl: 'https://example.test',
   endpoints: {

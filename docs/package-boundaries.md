@@ -25,7 +25,7 @@ It should not own:
 - Image Garden onboarding/menu/audio/product UI;
 - implicit assumptions that every host has `/api/assets`, `/api/atlas`, or `/api/texture-array`.
 
-The viewer accepts direct `ConstellationData`, a `ConstellationDataSource`, or static `RuntimeAsset[]`. HTTP loading is an adapter: `createFetchDataSource()` defaults to the Studio/Image Garden local API for compatibility, but callers can provide explicit endpoint paths.
+The viewer accepts direct `ConstellationData`, a `ConstellationDataSource`, or static `RuntimeAsset[]`. HTTP loading is an adapter: `createStudioDataSource()` names the Studio/Image Garden local API explicitly, while `createFetchDataSource()` lets other hosts provide their own endpoint paths.
 
 ## Studio
 
@@ -67,5 +67,5 @@ It should remain free to be opinionated. It is not the generic viewer package; i
 
 - Studio exposes `/api/status`, `/api/assets`, `/api/assets/near`, `/api/assets/:id`, `/api/thumbnails/:id`, and `/api/files/:id` for runtime assets.
 - Texture-page acceleration is explicit from the Viewer perspective: Playview passes `/api/texture-array/index.json?...` and `/api/atlas/index.json` URLs into Viewer options.
-- `@constellation/viewer` can still use `createFetchDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths or use `createStaticDataSource()`.
+- `@constellation/viewer` can use `createStudioDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths to `createFetchDataSource()` or use `createStaticDataSource()`.
 - Playview remains responsible for Image Garden behavior and defaults; Viewer remains responsible for rendering those options efficiently.

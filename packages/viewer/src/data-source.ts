@@ -31,7 +31,7 @@ export interface FetchDataSourceOptions {
   fetch?: typeof fetch;
 }
 
-const DEFAULT_FETCH_ENDPOINTS: FetchDataSourceEndpoints = {
+export const STUDIO_API_ENDPOINTS: FetchDataSourceEndpoints = {
   status: '/api/status',
   assets: '/api/assets',
   nearAssets: '/api/assets/near',
@@ -118,10 +118,16 @@ export function createStaticDataSource(
   };
 }
 
+export function createStudioDataSource(
+  options: Omit<FetchDataSourceOptions, 'endpoints'> = {},
+): ConstellationDataSource {
+  return createFetchDataSource({ ...options, endpoints: STUDIO_API_ENDPOINTS });
+}
+
 export function createFetchDataSource(options: FetchDataSourceOptions = {}): ConstellationDataSource {
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? '');
   const fetchImpl = options.fetch ?? fetch;
-  const endpoints: FetchDataSourceEndpoints = { ...DEFAULT_FETCH_ENDPOINTS, ...options.endpoints };
+  const endpoints: FetchDataSourceEndpoints = { ...STUDIO_API_ENDPOINTS, ...options.endpoints };
 
   return {
     async getStatus() {
