@@ -13,59 +13,52 @@
   <body>
     <main class="page">
       <header class="hero" aria-labelledby="title">
-        <div class="sigil" aria-hidden="true">
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-        </div>
-        <p class="eyebrow">local machine vision for personal archives</p>
         <h1 id="title">Image Garden</h1>
         <p class="lede">
-          A quiet, local-first map for wandering through large image libraries by meaning.
+          Image Garden is a software toy for exploring your photo library as a 3D embedding map.
         </p>
       </header>
 
       <section class="status-visual" aria-label="embedding status visualization">
-        <div class="status-topline">
-          <span>embedding images</span>
-          <span>8751 / 8751</span>
-        </div>
-        <div class="bar" aria-hidden="true"><div class="bar-fill"></div></div>
-        <div class="starfield" aria-hidden="true">
-          <i style="--x:8;--y:26;--o:.28"></i>
-          <i style="--x:15;--y:62;--o:.56"></i>
-          <i style="--x:21;--y:42;--o:.36"></i>
-          <i style="--x:28;--y:72;--o:.72"></i>
-          <i style="--x:35;--y:22;--o:.44"></i>
-          <i style="--x:43;--y:51;--o:.88"></i>
-          <i style="--x:49;--y:31;--o:.32"></i>
-          <i style="--x:55;--y:69;--o:.64"></i>
-          <i style="--x:62;--y:47;--o:.42"></i>
-          <i style="--x:69;--y:18;--o:.76"></i>
-          <i style="--x:76;--y:58;--o:.52"></i>
-          <i style="--x:83;--y:36;--o:.3"></i>
-          <i style="--x:90;--y:74;--o:.82"></i>
-        </div>
+        <div class="clip-frame">
+          <video autoplay muted loop playsinline preload="metadata" aria-label="Image Garden interface preview">
+            <source src="https://file.garden/aDx7rtkwXCXfZGMO/imagegarden/image-garden-3-final-compressed.mp4" type="video/mp4" />
+          </video>
         <ol class="log" aria-label="embedding log">
-          <li>indexed 8751 unique assets</li>
-          <li>built semantic coordinates</li>
-          <li>assembled texture pages</li>
-          <li>ready</li>
         </ol>
       </section>
 
+        <p class="sublede">
+          Drop in a folder. Image Garden embeds your images locally, arranges them by visual meaning, and lets you fly through the result.
+        </p>
+
+      <details class="nerds">
+        <summary>for rendering / ML nerds</summary>
+        <div class="nerd-notes">
+          <p>
+            The viewer uses WebGL instancing, texture pages, frustum culling, screen-size LOD,
+            world scaling, and deterministic jitter to keep large photo maps navigable.
+          </p>
+          <p>
+            The map is built from image embeddings, projected into 3D with UMAP, then tuned so dense clusters
+            remain readable without losing the feeling of an embedding space.
+          </p>
+          <p>
+            Embeddings run locally with ONNX by default. Image Garden currently defaults to MobileCLIP-S1,
+            with OpenCLIP/PyTorch-style paths kept for experimentation.
+          </p>
+          <p>
+            The runtime is intentionally boring: a local backend, generated thumbnails, cached embeddings,
+            and a browser viewer. No cloud photo upload is required.
+          </p>
+        </div>
+      </details>
+
       <section class="install" aria-labelledby="install-title">
         <h2 id="install-title">install</h2>
-        <code>npm install -g image-garden</code>
+        <code>pnpm install -g image-garden</code>
       </section>
 
-      <section class="notes" aria-label="features">
-        <p><strong>local-first.</strong> Your archive stays on your machine.</p>
-        <p><strong>semantic.</strong> Images become coordinates you can fly through.</p>
-        <p><strong>large-library ready.</strong> Built for thousands of memories, not a demo grid.</p>
-      </section>
 
       <footer class="footer">
         <a href="https://github.com/igorrocha/photoview">github</a>
