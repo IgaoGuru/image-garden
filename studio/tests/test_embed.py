@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from constellation_studio.assets import AssetOptions, sanitize_directory
+from constellation_studio import assets as assets_module
+from constellation_studio.assets import (
+    AssetOptions,
+    PreparedSanitizedImage,
+    sanitize_directory,
+)
 from constellation_studio.cache import EmbeddingCache
 from constellation_studio.embed import EmbedOptions, embed_directory
 from constellation_studio.images import (
@@ -19,6 +25,9 @@ from constellation_studio.schema import (
     write_constellation_json,
     write_studio_manifest,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class FakeEmbedder:
@@ -123,6 +132,42 @@ def test_sanitize_directory_writes_hashed_jpegs_and_thumbnails(
     assert record.image_path.read_bytes().startswith(b"\xff\xd8")
     assert record.thumbnail_path.read_bytes().startswith(b"\xff\xd8")
     assert warnings[-1] == "Skipped 1 image(s) during ingestion."
+
+
+def test_sanitize_directory_writes_each_result_before_next_prepare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_image(tmp_path / "raw" / "one.jpg", (255, 0, 0))
+    create_image(tmp_path / "raw" / "two.jpg", (0, 255, 0))
+    original = assets_module.prepare_sanitized_image
+    prepared: list[PreparedSanitizedImage] = []
+
+    def wrapped_prepare(
+        path: Path, *, options: AssetOptions
+    ) -> PreparedSanitizedImage:
+        if prepared:
+            assert prepared[0].record.image_path.is_file()
+            assert prepared[0].record.thumbnail_path.is_file()
+        result = original(path, options=options)
+        prepared.append(result)
+        return result
+
+    monkeypatch.setattr(
+        assets_module,
+        "prepare_sanitized_image",
+        wrapped_prepare,
+    )
+
+    sanitized = sanitize_directory(
+        tmp_path / "raw",
+        options=AssetOptions(
+            asset_root=tmp_path / "assets",
+            sanitize_workers=1,
+        ),
+    )
+
+    assert len(sanitized) == 2
 
 
 def test_embed_directory_writes_viewer_contract(tmp_path: Path) -> None:

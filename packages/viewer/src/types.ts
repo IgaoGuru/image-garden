@@ -84,6 +84,16 @@ export interface LayoutOptions {
   seed?: number;
   /** Center resulting coordinates around the origin. */
   center?: boolean;
+  /** Deterministically jitter near-duplicate precomputed positions to split same-coordinate stacks. */
+  duplicateJitter?: boolean;
+  /** Distance under which a point is considered part of a near-duplicate stack. Defaults to 12. */
+  duplicateJitterDistance?: number;
+  /** Minimum jitter magnitude in world units. Defaults to 50. */
+  duplicateJitterMin?: number;
+  /** Exponential half-life for additional jitter magnitude. Defaults to 50. */
+  duplicateJitterHalfLife?: number;
+  /** Optional cap for jitter magnitude in world units. Defaults to 250. */
+  duplicateJitterMax?: number;
   /** Separate nearby UMAP points after layout to reduce sprite overlap while preserving cluster anchors. Defaults to true for embedding-derived layouts. */
   collisionRelaxation?: boolean;
   /** Target minimum world-space distance between relaxed points. Defaults to 10. */
@@ -124,11 +134,27 @@ export interface SpriteOptions {
   pointOpacity?: number;
   /** World-space raycast radius for LOD point picking. */
   pointPickRadius?: number;
+  /** Promote only cards at least this tall on screen; smaller/farther images stay as points. Defaults to 0. */
+  minCardScreenHeightPx?: number;
+  /** Skip textured-card promotion for records outside the camera frustum. Defaults to true. */
+  frustumCullCards?: boolean;
+  /** Extra culling frustum margin as a fraction of camera FOV/aspect. Defaults to 0.1. */
+  frustumCullMargin?: number;
   /** Maximum fraction of viewport height a sprite may occupy before it shrinks. Set to Infinity to disable. */
   maxViewportHeight?: number;
   billboard?: boolean;
   placeholderColor?: number;
   selectedColor?: number;
+  /** Use WebGL2 texture-array pages in LOD mode when supported. */
+  textureArray?: boolean;
+  textureArrayIndexUrl?: string;
+  textureArrayPageConcurrency?: number;
+  textureArrayMaxPages?: number;
+  /** Use server-generated thumbnail atlas pages in LOD mode. */
+  atlas?: boolean;
+  atlasIndexUrl?: string;
+  atlasPageConcurrency?: number;
+  atlasMaxPages?: number;
 }
 
 export interface ConstellationViewerOptions {
@@ -152,6 +178,44 @@ export interface PositionedImage extends ConstellationImage {
   position: Vec3;
 }
 
+export interface TextureQueueDebugStats {
+  activeLoads: number;
+  queued: number;
+  loading: number;
+  loaded: number;
+  totalRequests: number;
+  totalLoads: number;
+  totalErrors: number;
+}
+
+export interface ViewerDebugStats {
+  mode: 'cards' | 'lod';
+  imageCount: number;
+  cameraPosition: Vec3;
+  lod?: {
+    activeCards: number;
+    loadedCards: number;
+    capacity: number;
+    candidateCount: number;
+    nearestUnloadedDistance: number | null;
+    visibleCandidateCount?: number;
+    frustumCulledCount?: number;
+    screenSizeCulledCount?: number;
+    frustumCullMargin?: number;
+    minCardScreenHeightPx?: number;
+    lazyLoadDistance: number;
+    textureUnloadDistance: number;
+    maxTexturedCards: number;
+    maxLoadedTextures: number;
+    lastUpdateMs: number;
+    atlasReady?: boolean;
+    atlasPagesLoaded?: number;
+    textureArrayReady?: boolean;
+    textureArrayPagesLoaded?: number;
+    textureQueue: TextureQueueDebugStats;
+  };
+}
+
 export interface ConstellationViewer {
   readonly container: HTMLElement;
   readonly data: ConstellationData;
@@ -162,4 +226,5 @@ export interface ConstellationViewer {
   resetCamera(): void;
   setData(data: ConstellationData): void;
   setSelected(id: string | null): void;
+  getDebugStats(): ViewerDebugStats;
 }

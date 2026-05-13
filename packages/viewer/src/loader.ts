@@ -1,5 +1,7 @@
 import { SRGBColorSpace, Texture, TextureLoader } from 'three';
 
+import type { TextureQueueDebugStats } from './types';
+
 export interface TextureRequest {
   id: string;
   url: string;
@@ -19,6 +21,9 @@ export class TextureLoadQueue {
   private readonly queue: QueuedRequest[] = [];
   private activeLoads = 0;
   private destroyed = false;
+  private totalRequests = 0;
+  private totalLoads = 0;
+  private totalErrors = 0;
 
   constructor(private readonly maxConcurrentLoads = 8) {
     this.loader.setCrossOrigin('anonymous');
@@ -26,6 +31,7 @@ export class TextureLoadQueue {
 
   request(request: TextureRequest): () => void {
     if (this.destroyed) return () => undefined;
+    this.totalRequests += 1;
 
     const loaded = this.loaded.get(request.id);
     if (loaded) {
@@ -57,6 +63,18 @@ export class TextureLoadQueue {
     if (!texture) return;
     texture.dispose();
     this.loaded.delete(id);
+  }
+
+  getDebugStats(): TextureQueueDebugStats {
+    return {
+      activeLoads: this.activeLoads,
+      queued: this.queued.size,
+      loading: this.loading.size,
+      loaded: this.loaded.size,
+      totalRequests: this.totalRequests,
+      totalLoads: this.totalLoads,
+      totalErrors: this.totalErrors,
+    };
   }
 
   dispose(): void {
@@ -95,6 +113,7 @@ export class TextureLoadQueue {
           if (this.destroyed || request.cancelled) {
             texture.dispose();
           } else {
+            this.totalLoads += 1;
             this.loaded.set(request.id, texture);
             request.onLoad(texture);
           }
@@ -104,7 +123,10 @@ export class TextureLoadQueue {
         (error) => {
           this.activeLoads -= 1;
           this.loading.delete(request.id);
-          if (!request.cancelled) request.onError?.(error);
+          if (!request.cancelled) {
+            this.totalErrors += 1;
+            request.onError?.(error);
+          }
           this.pump();
         },
       );

@@ -21,7 +21,14 @@ export function computeLayout(
       return position;
     });
     const transformed = transformPoints(points, { center, scale, normalize: false });
-    const relaxed = options.collisionRelaxation ? relaxCollisions(transformed, options) : transformed;
+    const jittered = options.duplicateJitter
+      ? jitterDuplicatePositions(
+          transformed,
+          images.map((image) => image.id),
+          options,
+        )
+      : transformed;
+    const relaxed = options.collisionRelaxation ? relaxCollisions(jittered, options) : jittered;
     return images.map((image, index) => ({ ...image, position: relaxed[index] ?? [0, 0, 0] }));
   }
 
@@ -100,6 +107,50 @@ function transformPoints(
     const y = (options.center ? point[1] - center[1] : point[1]) * factor;
     const z = (options.center ? point[2] - center[2] : point[2]) * factor;
     return [x, y, z];
+  });
+}
+
+export function jitterDuplicatePositions(
+  points: readonly Vec3[],
+  ids: readonly string[],
+  options: LayoutOptions = {},
+): Vec3[] {
+  const nearDistance = options.duplicateJitterDistance ?? 12;
+  const minShift = options.duplicateJitterMin ?? 50;
+  const halfLife = options.duplicateJitterHalfLife ?? 50;
+  const maxShift = options.duplicateJitterMax ?? 250;
+  if (points.length < 2 || nearDistance <= 0 || minShift < 0 || halfLife <= 0) {
+    return points.map((point) => [point[0], point[1], point[2]]);
+  }
+
+  const gridPoints = points.map((point) => [point[0], point[1], point[2]] as [number, number, number]);
+  const grid = buildSpatialGrid(gridPoints, nearDistance);
+  const nearDistanceSq = nearDistance * nearDistance;
+  return points.map((point, index) => {
+    const source = gridPoints[index];
+    if (!source) return [point[0], point[1], point[2]];
+    let hasNearDuplicate = false;
+    forEachNeighborIndex(grid, gridCell(source, nearDistance), (otherIndex) => {
+      if (otherIndex === index || hasNearDuplicate) return;
+      const other = gridPoints[otherIndex];
+      if (!other) return;
+      const dx = source[0] - other[0];
+      const dy = source[1] - other[1];
+      const dz = source[2] - other[2];
+      hasNearDuplicate = dx * dx + dy * dy + dz * dz <= nearDistanceSq;
+    });
+    if (!hasNearDuplicate) return [point[0], point[1], point[2]];
+
+    const random = seededRandom(hashString(ids[index] ?? String(index)));
+    const direction = randomUnitVector(random);
+    const u = Math.min(1 - Number.EPSILON, Math.max(Number.EPSILON, random()));
+    const lambda = Math.LN2 / halfLife;
+    const magnitude = Math.min(maxShift, minShift + (-Math.log(1 - u) / lambda));
+    return [
+      point[0] + direction[0] * magnitude,
+      point[1] + direction[1] * magnitude,
+      point[2] + direction[2] * magnitude,
+    ];
   });
 }
 
@@ -223,10 +274,23 @@ function separatePair(
 
 function deterministicUnitVector(index: number, otherIndex: number): Vec3 {
   const random = seededRandom((index + 1) * 65_537 + (otherIndex + 1) * 1_048_583);
+  return randomUnitVector(random);
+}
+
+function randomUnitVector(random: () => number): Vec3 {
   const z = random() * 2 - 1;
   const theta = random() * Math.PI * 2;
   const radius = Math.sqrt(Math.max(0, 1 - z * z));
   return [Math.cos(theta) * radius, Math.sin(theta) * radius, z];
+}
+
+function hashString(value: string): number {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
 }
 
 function getBounds(points: readonly Vec3[]): { min: Vec3; max: Vec3 } {

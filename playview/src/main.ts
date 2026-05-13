@@ -1,4 +1,4 @@
-import { mount, type ConstellationViewer, type RuntimeAsset } from '@constellation/viewer';
+import { mount, type ConstellationViewer, type LayoutOptions, type RuntimeAsset } from '@constellation/viewer';
 import './style.css';
 
 interface ApiStatus {
@@ -17,15 +17,51 @@ interface DesktopBridge {
   openImportStudio?: () => Promise<ImportResult | undefined>;
 }
 
+interface PlayviewDebugSnapshot {
+  status: ApiStatus | null;
+  viewer: ReturnType<ConstellationViewer['getDebugStats']> | null;
+  resources: {
+    assetPageRequests: number;
+    atlasPageRequests: number;
+    textureArrayPageRequests: number;
+    thumbnailRequests: number;
+    fileRequests: number;
+  };
+  pointerLock: boolean;
+}
+
 interface ImportResult {
   ok?: boolean;
   canceled?: boolean;
   error?: string;
 }
 
+interface AssetPage {
+  assets?: RuntimeAsset[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+}
+
+interface LayoutTuning {
+  scale: number;
+  duplicateJitter: boolean;
+  duplicateJitterDistance: number;
+  duplicateJitterMin: number;
+  duplicateJitterHalfLife: number;
+  duplicateJitterMax: number;
+  lazyLoadDistance: number;
+  textureUnloadDistance: number;
+  minCardScreenHeightPx: number;
+  frustumCullMargin: number;
+  maxTexturedCards: number;
+  frustumCullCards: boolean;
+}
+
 declare global {
   interface Window {
     constellationDesktop?: DesktopBridge;
+    imageGardenDebug?: () => PlayviewDebugSnapshot;
   }
 }
 
@@ -41,6 +77,30 @@ const starfield = mustQuery<HTMLElement>('#starfield');
 const progressLog = mustQuery<HTMLElement>('#progress-log');
 const menu = mustQuery<HTMLElement>('#menu');
 const debug = mustQuery<HTMLElement>('#debug');
+const rerendering = mustQuery<HTMLElement>('#rerendering');
+const layoutJitterEnabled = mustQuery<HTMLInputElement>('#layout-jitter-enabled');
+const layoutScaleInput = mustQuery<HTMLInputElement>('#layout-scale');
+const layoutScaleValue = mustQuery<HTMLOutputElement>('#layout-scale-value');
+const layoutJitterDistanceInput = mustQuery<HTMLInputElement>('#layout-jitter-distance');
+const layoutJitterDistanceValue = mustQuery<HTMLOutputElement>('#layout-jitter-distance-value');
+const layoutJitterMinInput = mustQuery<HTMLInputElement>('#layout-jitter-min');
+const layoutJitterMinValue = mustQuery<HTMLOutputElement>('#layout-jitter-min-value');
+const layoutJitterHalfLifeInput = mustQuery<HTMLInputElement>('#layout-jitter-half-life');
+const layoutJitterHalfLifeValue = mustQuery<HTMLOutputElement>('#layout-jitter-half-life-value');
+const layoutJitterMaxInput = mustQuery<HTMLInputElement>('#layout-jitter-max');
+const layoutJitterMaxValue = mustQuery<HTMLOutputElement>('#layout-jitter-max-value');
+const lodDistanceInput = mustQuery<HTMLInputElement>('#lod-distance');
+const lodDistanceValue = mustQuery<HTMLOutputElement>('#lod-distance-value');
+const lodUnloadDistanceInput = mustQuery<HTMLInputElement>('#lod-unload-distance');
+const lodUnloadDistanceValue = mustQuery<HTMLOutputElement>('#lod-unload-distance-value');
+const lodMinScreenHeightInput = mustQuery<HTMLInputElement>('#lod-min-screen-height');
+const lodMinScreenHeightValue = mustQuery<HTMLOutputElement>('#lod-min-screen-height-value');
+const lodFrustumMarginInput = mustQuery<HTMLInputElement>('#lod-frustum-margin');
+const lodFrustumMarginValue = mustQuery<HTMLOutputElement>('#lod-frustum-margin-value');
+const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
+const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
+const lodFrustumEnabled = mustQuery<HTMLInputElement>('#lod-frustum-enabled');
+const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
 const windVolumeInput = mustQuery<HTMLInputElement>('#wind-volume');
 const windVolumeValue = mustQuery<HTMLOutputElement>('#wind-volume-value');
 const windStatus = mustQuery<HTMLElement>('#wind-status');
@@ -55,6 +115,7 @@ let lastProgressLogKey = '';
 let visibleProgress = 0;
 let helpTimer = 0;
 let idleTimer = 0;
+let debugTimer = 0;
 let spinnerFrame = 0;
 let wasPointerLocked = false;
 let tutorialActive = false;
@@ -75,7 +136,26 @@ const progressLogEntries: string[] = [];
 const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
 const minTutorialStepMs = 5_500;
+const assetPageSize = 5_000;
+const defaultLayoutTuning: LayoutTuning = {
+  scale: 7,
+  duplicateJitter: true,
+  duplicateJitterDistance: 8,
+  duplicateJitterMin: 5,
+  duplicateJitterHalfLife: 8,
+  duplicateJitterMax: 10,
+  lazyLoadDistance: 1_000,
+  textureUnloadDistance: 1_200,
+  minCardScreenHeightPx: 20,
+  frustumCullMargin: 0.1,
+  maxTexturedCards: 9_000,
+  frustumCullCards: true,
+};
+let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
 
+window.imageGardenDebug = readDebugSnapshot;
+
+setupLayoutControls();
 setupWindAmbience();
 
 window.setInterval(() => {
@@ -88,11 +168,11 @@ void boot();
 
 async function boot(): Promise<void> {
   try {
-    const [assetPayload, initialStatus] = await Promise.all([
-      fetchJson<{ assets?: RuntimeAsset[] }>('/api/assets?limit=5000'),
+    const [loadedAssets, initialStatus] = await Promise.all([
+      fetchAllAssets(),
       fetchJson<ApiStatus>('/api/status').catch(() => null),
     ]);
-    assets = assetPayload.assets ?? [];
+    assets = loadedAssets;
     latestStatus = initialStatus;
     if (assets.length > 0) {
       mountViewer(assets);
@@ -109,12 +189,50 @@ async function boot(): Promise<void> {
   }
 }
 
+async function fetchAllAssets(): Promise<RuntimeAsset[]> {
+  const loaded: RuntimeAsset[] = [];
+  let offset = 0;
+  let total: number | null = null;
+
+  while (total === null || offset < total) {
+    const payload = await fetchJson<AssetPage>(`/api/assets?limit=${assetPageSize}&offset=${offset}`);
+    const page = payload.assets ?? [];
+    loaded.push(...page);
+    offset += page.length;
+    if (typeof payload.total === 'number') total = payload.total;
+    if (page.length === 0 || page.length < assetPageSize) break;
+    if (total !== null && total > assetPageSize) status.textContent = `loading catalog ${loaded.length}/${total}`;
+    await delay(0);
+  }
+
+  return loaded;
+}
+
 function mountViewer(nextAssets: RuntimeAsset[]): void {
   viewerInstance?.destroy();
   viewerInstance = mount(
     root,
     { images: nextAssets.map((asset) => ({ ...asset, url: asset.fullUrl ?? asset.thumbnailUrl })) },
-    { backgroundColor: 0x000000, sprites: { renderMode: 'auto' }, layout: { center: false } },
+    {
+      backgroundColor: 0x000000,
+      sprites: {
+        renderMode: 'auto',
+        textureArray: true,
+        textureArrayPageConcurrency: 4,
+        textureArrayMaxPages: 40,
+        atlas: true,
+        atlasPageConcurrency: 6,
+        atlasMaxPages: 24,
+        lazyLoadDistance: layoutTuning.lazyLoadDistance,
+        textureUnloadDistance: layoutTuning.textureUnloadDistance,
+        maxTexturedCards: layoutTuning.maxTexturedCards,
+        maxLoadedTextures: layoutTuning.maxTexturedCards,
+        minCardScreenHeightPx: layoutTuning.minCardScreenHeightPx,
+        frustumCullCards: layoutTuning.frustumCullCards,
+        frustumCullMargin: layoutTuning.frustumCullMargin,
+      },
+      layout: currentLayoutOptions(),
+    },
   );
   status.textContent = `${nextAssets.length} images`;
   requestAnimationFrame(() => root.classList.add('visible'));
@@ -136,6 +254,13 @@ function installGlobalHandlers(): void {
     event.preventDefault();
     toggleMenu();
     if (!tutorialActive) showHelp('wasd move · shift fast · spacebar up · c down · esc go back', 6000);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() !== 'l' || !event.shiftKey) return;
+    if (!isPlayviewVisible()) return;
+    event.preventDefault();
+    void toggleLiveDebug();
   });
 
   document.addEventListener('pointerlockchange', () => {
@@ -164,6 +289,109 @@ async function handleMenuAction(action: string): Promise<void> {
   if (action === 'open-data') await postJson('/api/system/open-data-dir', {});
   if (action === 'clear-data') await clearData();
   if (action === 'debug') await showDebug();
+}
+
+function setupLayoutControls(): void {
+  writeLayoutControls(layoutTuning);
+  for (const input of [
+    layoutJitterEnabled,
+    layoutScaleInput,
+    layoutJitterDistanceInput,
+    layoutJitterMinInput,
+    layoutJitterHalfLifeInput,
+    layoutJitterMaxInput,
+    lodDistanceInput,
+    lodUnloadDistanceInput,
+    lodMinScreenHeightInput,
+    lodFrustumMarginInput,
+    lodMaxCardsInput,
+    lodFrustumEnabled,
+  ]) {
+    input.addEventListener('input', () => {
+      layoutTuning = readLayoutControls();
+      writeLayoutControls(layoutTuning);
+    });
+  }
+  layoutApply.addEventListener('click', () => {
+    layoutTuning = readLayoutControls();
+    writeLayoutControls(layoutTuning);
+    void rerenderGarden();
+  });
+}
+
+function currentLayoutOptions(): LayoutOptions {
+  return {
+    center: false,
+    scale: layoutTuning.scale,
+    duplicateJitter: layoutTuning.duplicateJitter,
+    duplicateJitterDistance: layoutTuning.duplicateJitterDistance,
+    duplicateJitterMin: layoutTuning.duplicateJitterMin,
+    duplicateJitterHalfLife: layoutTuning.duplicateJitterHalfLife,
+    duplicateJitterMax: layoutTuning.duplicateJitterMax,
+  };
+}
+
+function readLayoutControls(): LayoutTuning {
+  return {
+    scale: numericInput(layoutScaleInput, defaultLayoutTuning.scale),
+    duplicateJitter: layoutJitterEnabled.checked,
+    duplicateJitterDistance: numericInput(layoutJitterDistanceInput, defaultLayoutTuning.duplicateJitterDistance),
+    duplicateJitterMin: numericInput(layoutJitterMinInput, defaultLayoutTuning.duplicateJitterMin),
+    duplicateJitterHalfLife: numericInput(layoutJitterHalfLifeInput, defaultLayoutTuning.duplicateJitterHalfLife),
+    duplicateJitterMax: numericInput(layoutJitterMaxInput, defaultLayoutTuning.duplicateJitterMax),
+    lazyLoadDistance: numericInput(lodDistanceInput, defaultLayoutTuning.lazyLoadDistance),
+    textureUnloadDistance: numericInput(lodUnloadDistanceInput, defaultLayoutTuning.textureUnloadDistance),
+    minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
+    frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
+    maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
+    frustumCullCards: lodFrustumEnabled.checked,
+  };
+}
+
+function writeLayoutControls(tuning: LayoutTuning): void {
+  layoutJitterEnabled.checked = tuning.duplicateJitter;
+  layoutScaleInput.value = String(tuning.scale);
+  layoutScaleValue.value = `${tuning.scale.toFixed(2)}×`;
+  layoutJitterDistanceInput.value = String(tuning.duplicateJitterDistance);
+  layoutJitterDistanceValue.value = tuning.duplicateJitterDistance.toFixed(0);
+  layoutJitterMinInput.value = String(tuning.duplicateJitterMin);
+  layoutJitterMinValue.value = tuning.duplicateJitterMin.toFixed(0);
+  layoutJitterHalfLifeInput.value = String(tuning.duplicateJitterHalfLife);
+  layoutJitterHalfLifeValue.value = tuning.duplicateJitterHalfLife.toFixed(0);
+  layoutJitterMaxInput.value = String(tuning.duplicateJitterMax);
+  layoutJitterMaxValue.value = tuning.duplicateJitterMax.toFixed(0);
+  lodDistanceInput.value = String(tuning.lazyLoadDistance);
+  lodDistanceValue.value = tuning.lazyLoadDistance.toFixed(0);
+  lodUnloadDistanceInput.value = String(tuning.textureUnloadDistance);
+  lodUnloadDistanceValue.value = tuning.textureUnloadDistance.toFixed(0);
+  lodMinScreenHeightInput.value = String(tuning.minCardScreenHeightPx);
+  lodMinScreenHeightValue.value = `${tuning.minCardScreenHeightPx.toFixed(0)}px`;
+  lodFrustumMarginInput.value = String(tuning.frustumCullMargin);
+  lodFrustumMarginValue.value = `${Math.round(tuning.frustumCullMargin * 100)}%`;
+  lodMaxCardsInput.value = String(tuning.maxTexturedCards);
+  lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
+  lodFrustumEnabled.checked = tuning.frustumCullCards;
+}
+
+async function rerenderGarden(): Promise<void> {
+  if (assets.length === 0) return;
+  rerendering.classList.add('visible');
+  rerendering.setAttribute('aria-hidden', 'false');
+  await nextFrame();
+  mountViewer(assets);
+  await nextFrame();
+  rerendering.classList.remove('visible');
+  rerendering.setAttribute('aria-hidden', 'true');
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
+}
+
+function numericInput(input: HTMLInputElement, fallback: number): number {
+  const value = Number.parseFloat(input.value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function setupWindAmbience(): void {
@@ -592,7 +820,7 @@ function showMenu(): void {
 function hideMenu(): void {
   menu.classList.remove('visible');
   menu.setAttribute('aria-hidden', 'true');
-  debug.classList.remove('visible');
+  stopLiveDebug();
   root.querySelector<HTMLCanvasElement>('canvas')?.focus();
 }
 
@@ -614,10 +842,62 @@ async function reimportLastFolder(): Promise<void> {
 }
 
 async function showDebug(): Promise<void> {
-  const current = await fetchJson<ApiStatus>('/api/status');
-  latestStatus = current;
-  debug.textContent = JSON.stringify(current, null, 2);
-  debug.classList.toggle('visible');
+  await toggleLiveDebug();
+}
+
+async function toggleLiveDebug(): Promise<void> {
+  if (debug.classList.contains('visible')) {
+    stopLiveDebug();
+    return;
+  }
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (!menu.classList.contains('visible')) showMenu();
+  debug.classList.add('visible');
+  await refreshLiveDebug();
+  window.clearInterval(debugTimer);
+  debugTimer = window.setInterval(() => {
+    void refreshLiveDebug();
+  }, 500);
+}
+
+function stopLiveDebug(): void {
+  window.clearInterval(debugTimer);
+  debugTimer = 0;
+  debug.classList.remove('visible');
+}
+
+async function refreshLiveDebug(): Promise<void> {
+  const current = await fetchJson<ApiStatus>('/api/status').catch(() => null);
+  if (current) latestStatus = current;
+  debug.textContent = JSON.stringify(
+    {
+      ...readDebugSnapshot(),
+      status: current,
+    },
+    null,
+    2,
+  );
+}
+
+function readDebugSnapshot(): PlayviewDebugSnapshot {
+  const resourceEntries = performance.getEntriesByType('resource');
+  const thumbnailRequests = resourceEntries.filter((entry) => entry.name.includes('/api/thumbnails/')).length;
+  const fileRequests = resourceEntries.filter((entry) => entry.name.includes('/api/files/')).length;
+  const assetPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/assets')).length;
+  const atlasPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/atlas/pages')).length;
+  const textureArrayPageRequests = resourceEntries.filter((entry) => entry.name.includes('/api/texture-array/pages')).length;
+  return {
+    status: latestStatus,
+    viewer: viewerInstance?.getDebugStats() ?? null,
+    resources: {
+      assetPageRequests,
+      atlasPageRequests,
+      textureArrayPageRequests,
+      thumbnailRequests,
+      fileRequests,
+    },
+    pointerLock: document.pointerLockElement === root.querySelector('canvas'),
+  };
 }
 
 function delay(ms: number): Promise<void> {

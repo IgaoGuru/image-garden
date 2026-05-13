@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,14 +95,18 @@ class IndexStore:
     def __init__(self, db_path: Path, *, asset_root: Path) -> None:
         self.db_path = db_path.expanduser().resolve()
         self.asset_root = asset_root.expanduser().resolve()
+        self._status_lock: threading.RLock = threading.RLock()
+        self._status_cache: dict[str, str] = {}
+        self._asset_count_cache: int = 0
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.asset_root.mkdir(parents=True, exist_ok=True)
         self.initialize()
+        self.refresh_status_cache()
 
     def initialize(self) -> None:
         """Create or migrate the prototype schema."""
         with self._connect() as connection:
-            connection.executescript(
+            _ = connection.executescript(
                 """
                 PRAGMA journal_mode = WAL;
                 CREATE TABLE IF NOT EXISTS assets (
@@ -143,7 +148,8 @@ class IndexStore:
         if not assets:
             return
         with self._connect() as connection:
-            connection.executemany(UPSERT_ASSET_SQL, asset_rows(assets))
+            _ = connection.executemany(UPSERT_ASSET_SQL, asset_rows(assets))
+            self._set_asset_count_cache(self._count_assets(connection))
 
     def set_index_state(self, state: str) -> None:
         """Persist a simple index state string."""
@@ -171,13 +177,21 @@ class IndexStore:
         completed: int,
         total: int,
         message: str = "",
+        persist: bool = True,
     ) -> None:
-        """Persist coarse progress for the current local job."""
+        """Update coarse progress for the current local job."""
+        values = {
+            "jobPhase": phase,
+            "jobCompleted": str(completed),
+            "jobTotal": str(total),
+            "jobMessage": message,
+        }
+        self._set_status_cache_values(values)
+        if not persist:
+            return
         with self._connect() as connection:
-            self._set_status_value(connection, "jobPhase", phase)
-            self._set_status_value(connection, "jobCompleted", str(completed))
-            self._set_status_value(connection, "jobTotal", str(total))
-            self._set_status_value(connection, "jobMessage", message)
+            for key, value in values.items():
+                self._set_status_value(connection, key, value)
 
     def set_embedding_engine(self, engine: str) -> None:
         """Persist the selected embedding engine for status displays."""
@@ -194,9 +208,10 @@ class IndexStore:
             )
 
     def status(self) -> IndexStatus:
-        """Return API status."""
-        values = self._status_values()
-        total = self.count_assets()
+        """Return API status from an in-memory snapshot."""
+        with self._status_lock:
+            values = dict(self._status_cache)
+            total = self._asset_count_cache
         status: IndexStatus = {
             "state": values.get("state", "idle"),
             "paused": values.get("paused", "false") == "true",
@@ -228,7 +243,7 @@ class IndexStore:
     def clear_assets(self) -> None:
         """Clear indexed assets and reset import progress/status."""
         with self._connect() as connection:
-            connection.execute("DELETE FROM assets")
+            _ = connection.execute("DELETE FROM assets")
             self._set_status_value(connection, "state", "idle")
             self._set_status_value(connection, "paused", "false")
             self._set_status_value(connection, "jobPhase", "idle")
@@ -236,17 +251,14 @@ class IndexStore:
             self._set_status_value(connection, "jobTotal", "0")
             self._set_status_value(connection, "jobMessage", "")
             self._set_status_value(connection, "lastImportPath", "")
+            self._set_asset_count_cache(0)
 
     def count_assets(self) -> int:
         """Return the number of indexed runtime assets."""
         with self._connect() as connection:
-            row = cast(
-                "sqlite3.Row | None",
-                connection.execute("SELECT COUNT(*) FROM assets").fetchone(),
-            )
-        if row is None:
-            return 0
-        return int(str(cast("object", row[0])))
+            total = self._count_assets(connection)
+        self._set_asset_count_cache(total)
+        return total
 
     def list_assets(self, *, limit: int, offset: int) -> list[RuntimeAsset]:
         """Return positioned runtime assets for the API."""
@@ -326,12 +338,20 @@ class IndexStore:
                 ).fetchone(),
             )
 
-    def _status_values(self) -> dict[str, str]:
+    def refresh_status_cache(self) -> None:
+        """Load status and asset count into memory for cheap polling."""
         with self._connect() as connection:
-            rows = cast(
-                "list[sqlite3.Row]",
-                connection.execute("SELECT key, value FROM status").fetchall(),
-            )
+            values = self._status_values(connection)
+            total = self._count_assets(connection)
+        with self._status_lock:
+            self._status_cache = values
+            self._asset_count_cache = total
+
+    def _status_values(self, connection: sqlite3.Connection) -> dict[str, str]:
+        rows = cast(
+            "list[sqlite3.Row]",
+            connection.execute("SELECT key, value FROM status").fetchall(),
+        )
         values: dict[str, str] = {}
         for row in rows:
             key = row_str(row, "key")
@@ -339,8 +359,18 @@ class IndexStore:
             values[key] = value
         return values
 
+    def _count_assets(self, connection: sqlite3.Connection) -> int:
+        row = cast(
+            "sqlite3.Row | None",
+            connection.execute("SELECT COUNT(*) FROM assets").fetchone(),
+        )
+        if row is None:
+            return 0
+        return int(str(cast("object", row[0])))
+
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(self.db_path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         return connection
 
@@ -350,13 +380,22 @@ class IndexStore:
         key: str,
         value: str,
     ) -> None:
-        connection.execute(
+        _ = connection.execute(
             """
             INSERT INTO status(key, value) VALUES (?, ?)
             ON CONFLICT(key) DO UPDATE SET value = excluded.value
             """,
             (key, value),
         )
+        self._set_status_cache_values({key: value})
+
+    def _set_status_cache_values(self, values: Mapping[str, str]) -> None:
+        with self._status_lock:
+            self._status_cache.update(values)
+
+    def _set_asset_count_cache(self, total: int) -> None:
+        with self._status_lock:
+            self._asset_count_cache = total
 
 
 def asset_rows(
@@ -399,9 +438,9 @@ def runtime_asset_from_row(row: sqlite3.Row) -> RuntimeAsset:
     creation_date = optional_str(row, "creation_date")
     media_type = optional_str(row, "media_type")
     if creation_date is not None:
-        metadata.setdefault("creationDate", creation_date)
+        _ = metadata.setdefault("creationDate", creation_date)
     if media_type is not None:
-        metadata.setdefault("mediaType", media_type)
+        _ = metadata.setdefault("mediaType", media_type)
     asset: RuntimeAsset = {
         "id": asset_id,
         "thumbnailUrl": f"/api/thumbnails/{asset_id}",

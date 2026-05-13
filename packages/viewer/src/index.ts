@@ -1,5 +1,7 @@
 import { Vector3 } from 'three';
 
+import { AtlasLodManager } from './atlas-lod';
+import { TextureArrayLodManager } from './texture-array-lod';
 import { createFlyControls, type FlyControls } from './controls';
 import { runtimeAssetsToData } from './data-source';
 import { computeLayout } from './layout';
@@ -12,6 +14,7 @@ import type {
   ConstellationViewer,
   ConstellationViewerOptions,
   PositionedImage,
+  ViewerDebugStats,
 } from './types';
 
 export type {
@@ -29,7 +32,9 @@ export type {
   RuntimeAssetMetadata,
   RuntimeMediaType,
   SpriteOptions,
+  TextureQueueDebugStats,
   Vec3,
+  ViewerDebugStats,
 } from './types';
 export {
   createFetchDataSource,
@@ -44,6 +49,7 @@ interface RenderManager {
   setImages(images: PositionedImage[]): void;
   update(camera: SceneHost['camera'], deltaSeconds: number): void;
   setSelected(id: string | null): void;
+  getDebugStats(): NonNullable<ViewerDebugStats['lod']>;
   dispose(): void;
 }
 
@@ -130,6 +136,19 @@ class ConstellationViewerImpl implements ConstellationViewer {
     this.sprites.setSelected(id);
   }
 
+  getDebugStats(): ViewerDebugStats {
+    return {
+      mode: this.usingLod ? 'lod' : 'cards',
+      imageCount: this.positions.length,
+      cameraPosition: [
+        this.sceneHost.camera.position.x,
+        this.sceneHost.camera.position.y,
+        this.sceneHost.camera.position.z,
+      ],
+      lod: this.sprites.getDebugStats(),
+    };
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -157,9 +176,15 @@ class ConstellationViewerImpl implements ConstellationViewer {
       onSelect: this.options.onSelect,
       onHover: this.options.onHover,
     };
-    return useLod
+    if (!useLod) {
+      return new SpriteManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
+    }
+    if (this.options.sprites?.textureArray === true && this.sceneHost.renderer.capabilities.isWebGL2) {
+      return new TextureArrayLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
+    }
+    return this.options.sprites?.atlas === false
       ? new PointLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions)
-      : new SpriteManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
+      : new AtlasLodManager(this.sceneHost.scene, this.sceneHost.renderer.domElement, images, managerOptions);
   }
 }
 

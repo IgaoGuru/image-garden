@@ -21,15 +21,45 @@
     </section>
     <section id="menu" aria-hidden="true">
       <div class="menu-stack">
-        <div class="menu-panel" role="dialog" aria-label="menu">
-          <button type="button" data-menu="reset-camera">reset camera</button>
-          <button type="button" data-menu="fit-constellation">fit constellation</button>
-          <button type="button" data-menu="reimport">reimport last folder</button>
-          <button type="button" data-menu="open-data">open data folder</button>
-          <button type="button" data-menu="clear-data">clear data</button>
-          <button type="button" data-menu="debug">debug status</button>
-          <button type="button" data-menu="close">close</button>
-          <pre id="debug" class="debug"></pre>
+        <div class="menu-row">
+          <div class="menu-panel" role="dialog" aria-label="menu">
+            <button type="button" data-menu="reset-camera">reset camera</button>
+            <button type="button" data-menu="fit-constellation">fit constellation</button>
+            <button type="button" data-menu="reimport">reimport last folder</button>
+            <button type="button" data-menu="open-data">open data folder</button>
+            <button type="button" data-menu="clear-data">clear data</button>
+            <button type="button" data-menu="debug">debug status</button>
+            <button type="button" data-menu="close">close</button>
+            <pre id="debug" class="debug"></pre>
+          </div>
+          <details id="layout-panel" class="layout-panel">
+            <summary>layout tuning</summary>
+            <div class="layout-controls">
+              <label class="toggle-row"><input id="layout-jitter-enabled" type="checkbox" /> split stacked images</label>
+              <label for="layout-scale">world scale <output id="layout-scale-value" for="layout-scale">2.00×</output></label>
+              <input id="layout-scale" type="range" min="1" max="10" step="1" />
+              <label for="layout-jitter-distance">stack detect distance <output id="layout-jitter-distance-value" for="layout-jitter-distance">8</output></label>
+              <input id="layout-jitter-distance" type="range" min="0" max="40" step="1" />
+              <label for="layout-jitter-min">min jitter <output id="layout-jitter-min-value" for="layout-jitter-min">8</output></label>
+              <input id="layout-jitter-min" type="range" min="0" max="100" step="1" />
+              <label for="layout-jitter-half-life">jitter half-life <output id="layout-jitter-half-life-value" for="layout-jitter-half-life">12</output></label>
+              <input id="layout-jitter-half-life" type="range" min="1" max="100" step="1" />
+              <label for="layout-jitter-max">max jitter <output id="layout-jitter-max-value" for="layout-jitter-max">80</output></label>
+              <input id="layout-jitter-max" type="range" min="0" max="300" step="5" />
+              <label for="lod-distance">max render distance <output id="lod-distance-value" for="lod-distance">1000</output></label>
+              <input id="lod-distance" type="range" min="100" max="3000" step="50" />
+              <label for="lod-unload-distance">unload distance <output id="lod-unload-distance-value" for="lod-unload-distance">1200</output></label>
+              <input id="lod-unload-distance" type="range" min="100" max="4000" step="50" />
+              <label for="lod-min-screen-height">min screen height <output id="lod-min-screen-height-value" for="lod-min-screen-height">20px</output></label>
+              <input id="lod-min-screen-height" type="range" min="0" max="80" step="1" />
+              <label for="lod-frustum-margin">frustum margin <output id="lod-frustum-margin-value" for="lod-frustum-margin">10%</output></label>
+              <input id="lod-frustum-margin" type="range" min="0" max="0.5" step="0.01" />
+              <label for="lod-max-cards">max textured cards <output id="lod-max-cards-value" for="lod-max-cards">9000</output></label>
+              <input id="lod-max-cards" type="range" min="100" max="12000" step="100" />
+              <label class="toggle-row"><input id="lod-frustum-enabled" type="checkbox" /> frustum cull cards</label>
+              <button id="layout-apply" type="button">apply + re-render</button>
+            </div>
+          </details>
         </div>
         <div class="menu-control" aria-label="wind ambience volume">
           <label for="wind-volume">wind</label>
@@ -38,6 +68,9 @@
           <span id="wind-status">click the constellation to start ambience</span>
         </div>
       </div>
+    </section>
+    <section id="rerendering" aria-live="assertive" aria-hidden="true">
+      <div>re-rendering garden</div>
     </section>
     <script type="module" src="/src/main.ts"></script>
   </body>

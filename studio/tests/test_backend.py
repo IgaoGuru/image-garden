@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -32,9 +34,14 @@ from constellation_studio.schema import (
 from constellation_studio.source_adapters import FolderSourceAdapter
 
 
-def create_image(path: Path, color: tuple[int, int, int]) -> None:
+def create_image(
+    path: Path,
+    color: tuple[int, int, int],
+    *,
+    size: tuple[int, int] = (8, 6),
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (8, 6), color).save(path)
+    Image.new("RGB", size, color).save(path)
 
 
 class BatchLimitedEmbedder:
@@ -150,6 +157,28 @@ def test_folder_source_adapter_scans_images(tmp_path: Path) -> None:
     assert assets[0].media_type == "image"
     assert assets[0].metadata["sourcePath"]
     assert adapter.source_id.startswith("folder:")
+
+
+def test_index_store_status_uses_memory_snapshot_when_db_unavailable(
+    tmp_path: Path,
+) -> None:
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+    store.set_job_progress(
+        phase="sanitizing",
+        completed=12,
+        total=30,
+        message="Preparing local JPEG assets",
+    )
+
+    shutil.rmtree(paths.data_dir)
+    status = store.status()
+
+    assert status["state"] == "idle"
+    assert status["jobPhase"] == "sanitizing"
+    assert status["jobCompleted"] == 12
+    assert status["jobTotal"] == 30
+    assert status["jobMessage"] == "Preparing local JPEG assets"
 
 
 def test_import_folder_requires_embedding_provider(
@@ -349,6 +378,136 @@ def test_backend_serves_playview_public_audio(tmp_path: Path) -> None:
         playview_dist=create_playview_dist(tmp_path / "playview-dist"),
     ) as base_url:
         assert fetch_bytes(f"{base_url}audio/wind-ambience.mp3") == b"fake mp3"
+
+
+def test_backend_serves_generated_files_without_sqlite_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+
+        listed = fetch_json(f"{base_url}api/assets?limit=1")
+        assert isinstance(listed, dict)
+        asset = listed["assets"][0]
+        asset_id = asset["id"]
+
+        def fail_path_lookup(self: IndexStore, asset_id: str) -> Path | None:
+            _ = self, asset_id
+            raise sqlite3.OperationalError("database unavailable")
+
+        monkeypatch.setattr(
+            IndexStore,
+            "asset_thumbnail_path",
+            fail_path_lookup,
+        )
+        monkeypatch.setattr(IndexStore, "asset_file_path", fail_path_lookup)
+
+        thumbnail_bytes = fetch_bytes(f"{base_url}api/thumbnails/{asset_id}")
+        file_bytes = fetch_bytes(f"{base_url}api/files/{asset_id}")
+
+        assert thumbnail_bytes.startswith(b"\xff\xd8")
+        assert file_bytes.startswith(b"\xff\xd8")
+
+
+def test_backend_get_store_failure_returns_503(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_list_assets(
+        self: IndexStore,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[object]:
+        _ = self, limit, offset
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(IndexStore, "list_assets", fail_list_assets)
+
+    with run_test_backend(data_dir=tmp_path / "app-data") as base_url:
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            fetch_json(f"{base_url}api/assets")
+
+        assert exc_info.value.code == 503
+        body = json.loads(exc_info.value.read().decode("utf-8"))
+        assert body["ok"] is False
+        assert "database unavailable" in body["error"]
+
+
+def test_backend_builds_thumbnail_atlas(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "one.jpg", (255, 0, 0))
+    create_image(tmp_path / "photos" / "two.jpg", (0, 255, 0))
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+
+        atlas = fetch_json(f"{base_url}api/atlas/index.json")
+        assert isinstance(atlas, dict)
+        assert atlas["total"] == 2
+        assert atlas["pageCount"] == 1
+        entries = atlas["entries"]
+        assert isinstance(entries, list)
+        assert len(entries) == 2
+        pages = atlas["pages"]
+        assert isinstance(pages, list)
+        page = pages[0]
+        assert isinstance(page, dict)
+        page_bytes = fetch_bytes(f"{base_url}{page['url']}")
+        assert page_bytes.startswith(b"\xff\xd8")
+
+
+def test_backend_builds_texture_array_pages(tmp_path: Path) -> None:
+    create_image(tmp_path / "photos" / "wide.jpg", (255, 0, 0), size=(80, 40))
+    create_image(tmp_path / "photos" / "tall.jpg", (0, 255, 0), size=(40, 80))
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/folder",
+            {"path": str(tmp_path / "photos")},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+
+        index = fetch_json(
+            f"{base_url}api/texture-array/index.json?thumbSize=64&layersPerPage=4"
+        )
+        assert isinstance(index, dict)
+        assert index["total"] == 2
+        assert index["pageCount"] == 1
+        assert index["thumbSize"] == 64
+        assert index["layersPerPage"] == 4
+        entries = index["entries"]
+        assert isinstance(entries, list)
+        assert {entry["layer"] for entry in entries} == {0, 1}
+        pages = index["pages"]
+        assert isinstance(pages, list)
+        page = pages[0]
+        assert isinstance(page, dict)
+        assert page["layers"] == 2
+        page_bytes = fetch_bytes(f"{base_url}{page['url']}")
+        assert page_bytes.startswith(b"\xff\xd8")
 
 
 def test_backend_import_folder_and_serves_local_api(tmp_path: Path) -> None:

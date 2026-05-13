@@ -12,7 +12,7 @@ import {
 } from 'three';
 
 import { TextureLoadQueue } from './loader';
-import type { ConstellationImage, PositionedImage, SpriteOptions } from './types';
+import type { ConstellationImage, PositionedImage, SpriteOptions, ViewerDebugStats } from './types';
 
 interface SpriteRecord {
   image: PositionedImage;
@@ -161,6 +161,36 @@ export class SpriteManager {
     const object = intersections[0]?.object;
     const id = typeof object?.userData.id === 'string' ? object.userData.id : undefined;
     return id ? this.records.get(id)?.image ?? null : null;
+  }
+
+  getDebugStats(): NonNullable<ViewerDebugStats['lod']> {
+    const records = [...this.records.values()];
+    const loadedCount = records.filter((record) => record.loaded).length;
+    const unloaded = records.filter((record) => !record.loaded && !this.textureQueue.has(record.image.id));
+    const nearestUnloadedDistance = unloaded.reduce<number | null>(
+      (nearest, record) => {
+        const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
+        const distance = camera ? record.mesh.position.distanceTo(camera.position) : Infinity;
+        return nearest === null ? distance : Math.min(nearest, distance);
+      },
+      null,
+    );
+    return {
+      activeCards: records.length,
+      loadedCards: loadedCount,
+      capacity: Math.max(0, this.options.maxLoadedTextures - loadedCount),
+      candidateCount: unloaded.filter((record) => {
+        const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
+        return camera ? record.mesh.position.distanceTo(camera.position) <= this.options.lazyLoadDistance : false;
+      }).length,
+      nearestUnloadedDistance,
+      lazyLoadDistance: this.options.lazyLoadDistance,
+      textureUnloadDistance: Infinity,
+      maxTexturedCards: records.length,
+      maxLoadedTextures: this.options.maxLoadedTextures,
+      lastUpdateMs: 0,
+      textureQueue: this.textureQueue.getDebugStats(),
+    };
   }
 
   dispose(): void {

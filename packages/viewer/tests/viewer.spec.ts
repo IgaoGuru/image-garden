@@ -127,6 +127,41 @@ test('near sprites shrink to stay below maximum viewport height', async ({ page 
   expect(consoleErrors).toEqual([]);
 });
 
+test('layout duplicate jitter deterministically splits same-coordinate stacks', async ({ page }) => {
+  await page.goto('/tests/fixture.html');
+  const result = await page.evaluate(async () => {
+    const { computeLayout } = await import('/src/index.ts');
+    const data = {
+      images: [
+        { id: 'a', url: 'x', position: [0, 0, 0] as const },
+        { id: 'b', url: 'y', position: [0, 0, 0] as const },
+        { id: 'far', url: 'z', position: [500, 0, 0] as const },
+      ],
+    };
+    const options = {
+      center: false,
+      duplicateJitter: true,
+      duplicateJitterDistance: 12,
+      duplicateJitterMin: 50,
+      duplicateJitterHalfLife: 50,
+      duplicateJitterMax: 250,
+    };
+    const first = computeLayout(data, options).map((image) => image.position);
+    const second = computeLayout(data, options).map((image) => image.position);
+    const distance = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    return {
+      first,
+      second,
+      duplicateDistance: distance(first[0]!, first[1]!),
+      farMoved: distance(first[2]!, [500, 0, 0]),
+    };
+  });
+
+  expect(result.first).toEqual(result.second);
+  expect(result.duplicateDistance).toBeGreaterThan(50);
+  expect(result.farMoved).toBe(0);
+});
+
 test('public API supports mount, setData, setSelected, destroy, and validation', async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
 
