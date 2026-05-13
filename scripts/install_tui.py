@@ -557,7 +557,7 @@ def ensure_model(paths: AppPaths, uv_path: str, *, install_model: bool) -> bool:
             str(paths.studio_dir),
             "run",
             "--no-dev",
-            "constellation-download-onnx",
+            "image-garden-download-onnx",
             "--output",
             str(paths.model_path),
         ],

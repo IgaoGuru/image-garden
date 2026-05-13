@@ -15,7 +15,7 @@ mkdir -p "$STAGE"
 cd "$ROOT"
 printf 'Building web assets…\n'
 pnpm install --frozen-lockfile
-pnpm --filter @constellation/viewer build
+pnpm --filter @image-garden/viewer build
 pnpm --filter @constellation/playview build
 
 printf 'ONNX model is not bundled; installer downloads it to app data on first run.\n'
@@ -27,8 +27,10 @@ printf 'Staging release files…\n'
 mkdir -p "$STAGE/studio" "$STAGE/viewer-dist" "$STAGE/playview-dist" "$STAGE/scripts"
 rsync -a \
   --exclude '.venv' \
+  --exclude '.ruff_cache' \
   --exclude '.pytest_cache' \
   --exclude '__pycache__' \
+  --exclude 'tests' \
   studio/ "$STAGE/studio/"
 rsync -a packages/viewer/dist/ "$STAGE/viewer-dist/"
 rsync -a playview/dist/ "$STAGE/playview-dist/"

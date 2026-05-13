@@ -2,11 +2,13 @@
 
 Local CLI/backend/data engine for Image Garden.
 
-Studio owns folder import, image sanitization, thumbnail generation, embedding/cache work, layout computation, SQLite runtime asset storage, and the local HTTP API consumed by Playview. It can serve configured static Viewer/Playview assets for development and releases, but product UI behavior belongs in Playview and generic rendering behavior belongs in `@constellation/viewer`.
+Studio owns folder import, image sanitization, thumbnail generation, embedding/cache work, layout computation, SQLite runtime asset storage, and the local HTTP API consumed by Playview. It can serve configured static Viewer/Playview assets for development and releases, but product UI behavior belongs in Playview and generic rendering behavior belongs in `@image-garden/viewer`.
+
+Publish target: Studio is a Python package/CLI named `image-garden-studio`. The user-facing release still exposes the bundled `image-garden` command, while lower-level scripts such as `image-garden-backend`, `image-garden-embed`, and `image-garden-download-onnx` are available for development and automation.
 
 ## What Studio does now
 
-`constellation-embed` is a full local pipeline:
+`image-garden-embed` is a full local pipeline:
 
 1. Recursively discovers still images, including `.heic` / `.heif` when `pillow-heif` can decode them.
 2. Converts every source image into backend-owned, browser-friendly JPEG assets.
@@ -101,14 +103,14 @@ pnpm studio:download-onnx -- --model clip-vit-base-patch32
 ```
 
 Models are not bundled in releases; installer/app setup downloads them into
-user-local app data. Embeddings stay local.
+user-local app data. Embeddings stay local. The `onnx` optional dependency installs ONNX Runtime for the default local engine; the `openclip` optional dependency installs the advanced PyTorch/OpenCLIP path for experimentation.
 
 ## Local backend API prototype
 
-`constellation-backend` persists positioned runtime assets in SQLite while continuing to reuse the folder JPEG sanitization path:
+`image-garden-backend` persists positioned runtime assets in SQLite while continuing to reuse the folder JPEG sanitization path:
 
 ```bash
-pnpm studio:backend -- --data-dir .constellation-backend
+pnpm studio:backend -- --data-dir .image-garden-backend
 curl -X POST http://127.0.0.1:8766/api/import/folder \
   -H 'Content-Type: application/json' \
   -d '{"path":"/path/to/photos"}'
@@ -141,7 +143,7 @@ pnpm studio:serve
 Routes:
 
 - `/` serves a local preview page.
-- `/data.json` serves the generated Constellation JSON.
+- `/data.json` serves the generated Image Garden/Viewer JSON.
 - `/assets/images/<hash>.jpg` serves canonical JPEGs by default.
 - `/assets/thumbs/<hash>.jpg` serves thumbnails by default.
 - `/viewer-entry.js` auto-detects and re-exports the built viewer entry when a viewer dist is available.

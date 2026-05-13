@@ -7,7 +7,7 @@ import {
   mountFromDataSource,
   relaxCollisions,
   runtimeAssetsToData,
-} from '../dist/constellation-viewer.js';
+} from '../dist/image-garden-viewer.js';
 
 if (typeof mount !== 'function') {
   throw new Error('Expected mount export to be a function.');

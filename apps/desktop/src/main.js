@@ -32,7 +32,7 @@ function backendCommand() {
       '--project',
       path.join(repoRoot, 'studio'),
       'run',
-      'constellation-backend',
+      'image-garden-backend',
       '--host',
       '127.0.0.1',
       '--port',

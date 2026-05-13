@@ -1,4 +1,4 @@
-import { mount, type ConstellationViewer, type LayoutOptions, type RuntimeAsset } from '@constellation/viewer';
+import { mount, type ImageGardenViewer, type LayoutOptions, type RuntimeAsset } from '@image-garden/viewer';
 import './style.css';
 
 interface ApiStatus {
@@ -19,7 +19,7 @@ interface DesktopBridge {
 
 interface PlayviewDebugSnapshot {
   status: ApiStatus | null;
-  viewer: ReturnType<ConstellationViewer['getDebugStats']> | null;
+  viewer: ReturnType<ImageGardenViewer['getDebugStats']> | null;
   resources: {
     assetPageRequests: number;
     atlasPageRequests: number;
@@ -106,7 +106,7 @@ const windVolumeValue = mustQuery<HTMLOutputElement>('#wind-volume-value');
 const windStatus = mustQuery<HTMLElement>('#wind-status');
 const desktop = window.constellationDesktop;
 
-let viewerInstance: ConstellationViewer | null = null;
+let viewerInstance: ImageGardenViewer | null = null;
 let latestStatus: ApiStatus | null = null;
 let assets: RuntimeAsset[] = [];
 let starCount = 0;

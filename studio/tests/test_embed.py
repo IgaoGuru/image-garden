@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from PIL import Image
 
 from constellation_studio import assets as assets_module
@@ -25,9 +27,6 @@ from constellation_studio.schema import (
     write_constellation_json,
     write_studio_manifest,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class FakeEmbedder:
@@ -277,3 +276,25 @@ def test_embed_directory_can_skip_bad_images_without_misaligning_ids(
     assert all(len(image.embedding) == 1 for image in embedded)
     assert any("bad test image" in warning for warning in warnings)
     assert warnings[-1] == "Skipped 1 image(s) that failed to embed."
+
+
+def test_onnx_preflight_reports_missing_model_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from constellation_studio.embedding_providers import (
+        OnnxClipEmbeddingProvider,
+        preflight_embedding_provider,
+    )
+
+    fake_onnxruntime = types.SimpleNamespace(
+        get_available_providers=lambda: ["CPUExecutionProvider"],
+    )
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+
+    provider = OnnxClipEmbeddingProvider(
+        model_path=tmp_path / "missing.onnx",
+        provider="auto",
+    )
+    with pytest.raises(FileNotFoundError, match="ONNX model file does not exist"):
+        preflight_embedding_provider(provider)

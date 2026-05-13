@@ -116,7 +116,7 @@ async function startServer(dataDir) {
       'run',
       '--extra',
       'onnx',
-      'constellation-app',
+      'image-garden-app',
       '--data-dir',
       dataDir,
       '--host',

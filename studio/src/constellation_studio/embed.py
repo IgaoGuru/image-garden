@@ -397,7 +397,7 @@ def run(args: argparse.Namespace) -> int:
         onnx_provider=str(args.onnx_provider),
     )
     if embedder is None:
-        msg = "constellation-embed requires an embedding engine"
+        msg = "image-garden-embed requires an embedding engine"
         raise ValueError(msg)
     cache_namespace = embedder.cache_namespace
 

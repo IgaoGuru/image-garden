@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -8,6 +9,23 @@ from constellation_studio import cli
 
 if TYPE_CHECKING:
     import pytest
+
+
+def test_pyproject_exposes_image_garden_studio_entry_points() -> None:
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    project = data["project"]
+    scripts = project["scripts"]
+
+    assert project["name"] == "image-garden-studio"
+    assert project["license"] == "GPL-3.0-only"
+    assert scripts["image-garden"] == "constellation_studio.cli:main"
+    assert scripts["image-garden-studio"] == "constellation_studio.cli:main"
+    assert scripts["image-garden-app"] == "constellation_studio.app:main"
+    assert scripts["image-garden-backend"] == "constellation_studio.backend:main"
+    assert scripts["image-garden-download-onnx"] == (
+        "constellation_studio.download_onnx:main"
+    )
 
 
 def test_read_write_running_state_clears_stale_pid(tmp_path: Path) -> None:

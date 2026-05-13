@@ -1240,9 +1240,9 @@ def find_default_playview_dist(start: Path) -> Path | None:
 def find_viewer_entry_file(viewer_dist: Path) -> Path | None:
     """Return the likely ESM viewer entry file."""
     names = [
-        "constellation-viewer.js",
-        "constellation-viewer.es.js",
-        "constellation-viewer.mjs",
+        "image-garden-viewer.js",
+        "image-garden-viewer.es.js",
+        "image-garden-viewer.mjs",
         "viewer.js",
         "viewer.mjs",
         "index.js",
@@ -1318,14 +1318,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path(".constellation-backend"),
+        default=Path(".image-garden-backend"),
         help="App data directory for SQLite and generated assets.",
     )
     parser.add_argument(
         "--viewer-dist",
         type=Path,
         default=None,
-        help="Optional built @constellation/viewer dist directory.",
+        help="Optional built @image-garden/viewer dist directory.",
     )
     parser.add_argument(
         "--playview-dist",

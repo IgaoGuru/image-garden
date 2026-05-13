@@ -67,7 +67,7 @@ It should remain free to be opinionated. It is not the generic viewer package; i
 
 - Studio exposes `/api/status`, `/api/assets`, `/api/assets/near`, `/api/assets/:id`, `/api/thumbnails/:id`, and `/api/files/:id` for runtime assets.
 - Texture-page acceleration is explicit from the Viewer perspective: Playview passes `/api/texture-array/index.json?...` and `/api/atlas/index.json` URLs into Viewer options.
-- `@constellation/viewer` can use `createStudioDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths to `createFetchDataSource()` or use `createStaticDataSource()`.
+- `@image-garden/viewer` can use `createStudioDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths to `createFetchDataSource()` or use `createStaticDataSource()`.
 - Playview remains responsible for Image Garden behavior and defaults; Viewer remains responsible for rendering those options efficiently.
 
 ## Remaining coupling allowed by design

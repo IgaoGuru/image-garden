@@ -11,8 +11,8 @@ import { SpriteManager } from './sprites';
 import type {
   ConstellationData,
   ConstellationDataSource,
-  ConstellationViewer,
-  ConstellationViewerOptions,
+  ImageGardenViewer,
+  ImageGardenViewerOptions,
   PositionedImage,
   ViewerDebugStats,
 } from './types';
@@ -23,6 +23,8 @@ export type {
   ConstellationImage,
   ConstellationViewer,
   ConstellationViewerOptions,
+  ImageGardenViewer,
+  ImageGardenViewerOptions,
   ControlsOptions,
   IndexStatus,
   LayoutOptions,
@@ -36,9 +38,12 @@ export type {
   Vec3,
   ViewerDebugStats,
 } from './types';
+export type { FetchDataSourceEndpoints, FetchDataSourceOptions, StaticDataSourceOptions, SyntheticAssetOptions } from './data-source';
 export {
+  STUDIO_API_ENDPOINTS,
   createFetchDataSource,
   createStaticDataSource,
+  createStudioDataSource,
   createSyntheticRuntimeAssets,
   imageToRuntimeAsset,
   runtimeAssetsToData,
@@ -53,7 +58,7 @@ interface RenderManager {
   dispose(): void;
 }
 
-class ConstellationViewerImpl implements ConstellationViewer {
+class ImageGardenViewerImpl implements ImageGardenViewer {
   readonly container: HTMLElement;
   data: ConstellationData;
   positions: PositionedImage[];
@@ -69,7 +74,7 @@ class ConstellationViewerImpl implements ConstellationViewer {
   constructor(
     container: HTMLElement,
     data: ConstellationData,
-    private readonly options: ConstellationViewerOptions = {},
+    private readonly options: ImageGardenViewerOptions = {},
   ) {
     validateData(data);
     if (container.clientWidth === 0 || container.clientHeight === 0) {
@@ -196,24 +201,24 @@ class ConstellationViewerImpl implements ConstellationViewer {
 export function mount(
   container: HTMLElement,
   data: ConstellationData,
-  options: ConstellationViewerOptions = {},
-): ConstellationViewer {
-  return new ConstellationViewerImpl(container, data, options);
+  options: ImageGardenViewerOptions = {},
+): ImageGardenViewer {
+  return new ImageGardenViewerImpl(container, data, options);
 }
 
 export function createViewer(
   container: HTMLElement,
   data: ConstellationData,
-  options: ConstellationViewerOptions = {},
-): ConstellationViewer {
+  options: ImageGardenViewerOptions = {},
+): ImageGardenViewer {
   return mount(container, data, options);
 }
 
 export async function mountFromDataSource(
   container: HTMLElement,
   dataSource: ConstellationDataSource,
-  options: ConstellationViewerOptions = {},
-): Promise<ConstellationViewer> {
+  options: ImageGardenViewerOptions = {},
+): Promise<ImageGardenViewer> {
   const assets = await dataSource.getInitialAssets();
   return mount(container, runtimeAssetsToData(assets), options);
 }
@@ -221,8 +226,8 @@ export async function mountFromDataSource(
 export async function createViewerFromDataSource(
   container: HTMLElement,
   dataSource: ConstellationDataSource,
-  options: ConstellationViewerOptions = {},
-): Promise<ConstellationViewer> {
+  options: ImageGardenViewerOptions = {},
+): Promise<ImageGardenViewer> {
   return mountFromDataSource(container, dataSource, options);
 }
 
@@ -235,7 +240,7 @@ function contentRadius(images: PositionedImage[]): number {
   return radius;
 }
 
-function shouldUseLod(count: number, options: ConstellationViewerOptions): boolean {
+function shouldUseLod(count: number, options: ImageGardenViewerOptions): boolean {
   const mode = options.sprites?.renderMode ?? 'auto';
   if (mode === 'lod') return true;
   if (mode === 'cards') return false;

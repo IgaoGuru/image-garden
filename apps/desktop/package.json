@@ -6,7 +6,7 @@
   "type": "module",
   "main": "src/main.js",
   "scripts": {
-    "dev": "pnpm --dir ../.. --filter @constellation/viewer build && pnpm --dir ../.. --filter @constellation/playview build && electron .",
+    "dev": "pnpm --dir ../.. --filter @image-garden/viewer build && pnpm --dir ../.. --filter @constellation/playview build && electron .",
     "start": "electron ."
   },
   "devDependencies": {

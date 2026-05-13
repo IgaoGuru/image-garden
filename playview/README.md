@@ -2,7 +2,7 @@
 
 Image Garden's browser application shell.
 
-Playview is intentionally product-specific. It is the layer that connects Studio's local API to `@constellation/viewer` with Image Garden defaults, then adds the user-facing app experience around it.
+Playview is intentionally product-specific. It is the layer that connects Studio's local API to `@image-garden/viewer` with Image Garden defaults, then adds the user-facing app experience around it.
 
 ## Responsibilities
 
@@ -47,4 +47,4 @@ In production, Studio serves the built Playview files as configured static asset
 
 ## Boundary
 
-If you want to embed a flyable image map in another project, use `@constellation/viewer` directly. If you want to generate local Image Garden data, use Studio. Use Playview when you want the Image Garden app experience that composes both.
+If you want to embed a flyable image map in another project, use `@image-garden/viewer` directly. If you want to generate local Image Garden data, use Studio. Use Playview when you want the Image Garden app experience that composes both.

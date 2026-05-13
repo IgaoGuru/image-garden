@@ -1,4 +1,4 @@
-# @constellation/viewer
+# @image-garden/viewer
 
 Flyable Three.js viewer for positioned image maps.
 
@@ -9,7 +9,7 @@ import {
   createStaticDataSource,
   mountFromDataSource,
   type RuntimeAsset,
-} from '@constellation/viewer';
+} from '@image-garden/viewer';
 
 const assets: RuntimeAsset[] = [
   {
@@ -35,7 +35,7 @@ viewer.destroy();
 For a local HTTP backend implementing the Studio/Image Garden API adapter:
 
 ```ts
-import { createStudioDataSource, mountFromDataSource } from '@constellation/viewer';
+import { createStudioDataSource, mountFromDataSource } from '@image-garden/viewer';
 
 await mountFromDataSource(el, createStudioDataSource({ baseUrl: 'http://127.0.0.1:8000' }));
 ```
@@ -43,7 +43,7 @@ await mountFromDataSource(el, createStudioDataSource({ baseUrl: 'http://127.0.0.
 Custom hosts can keep the same parser and provide explicit endpoint paths:
 
 ```ts
-import { createFetchDataSource } from '@constellation/viewer';
+import { createFetchDataSource } from '@image-garden/viewer';
 
 createFetchDataSource({
   baseUrl: 'https://example.test',
@@ -61,7 +61,7 @@ createFetchDataSource({
 Existing direct mounting is preserved:
 
 ```ts
-import { mount, type ConstellationData } from '@constellation/viewer';
+import { mount, type ConstellationData } from '@image-garden/viewer';
 
 const data: ConstellationData = {
   images: [
@@ -77,6 +77,14 @@ const data: ConstellationData = {
 
 mount(el, data, { layout: { scale: 160 } });
 ```
+
+## API docs and examples
+
+- `docs/api.md` describes the public API, data-source contract, callbacks, and rendering options.
+- `examples/static-assets.html` shows direct mounting with positioned image URLs.
+- `examples/custom-data-source.ts` shows a custom HTTP adapter.
+- `examples/embedding-fallback.ts` shows in-browser embedding layout for experiments.
+- `examples/atlas-texture-array-host/` documents the experimental acceleration manifest formats.
 
 ## Controls
 

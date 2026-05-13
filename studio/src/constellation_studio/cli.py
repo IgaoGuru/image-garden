@@ -407,7 +407,7 @@ def cmd_start_background(args: argparse.Namespace) -> int:
 def app_parser_args(
     paths: Paths, *, port: int, no_open: bool
 ) -> argparse.Namespace:
-    """Build parsed constellation-app args for in-process foreground run."""
+    """Build parsed image-garden-app args for in-process foreground run."""
     argv = [
         "--host",
         DEFAULT_HOST,

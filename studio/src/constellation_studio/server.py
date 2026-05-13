@@ -65,9 +65,9 @@ INDEX_HTML = """<!doctype html>
     async function importViewer() {
       const candidates = [
         '/viewer-entry.js',
-        '/viewer/constellation-viewer.js',
-        '/viewer/constellation-viewer.es.js',
-        '/viewer/constellation-viewer.mjs',
+        '/viewer/image-garden-viewer.js',
+        '/viewer/image-garden-viewer.es.js',
+        '/viewer/image-garden-viewer.mjs',
         '/viewer/viewer.js',
         '/viewer/viewer.mjs',
         '/viewer/index.js',
@@ -83,12 +83,12 @@ INDEX_HTML = """<!doctype html>
 
     const viewer = await importViewer();
     if (viewer && typeof viewer.mount === 'function') {
-      status.textContent = `Mounted @constellation/viewer with ${data.images.length} images.`;
+      status.textContent = `Mounted @image-garden/viewer with ${data.images.length} images.`;
       viewer.mount(root, data, { backgroundColor: 0x050507 });
     } else {
       status.textContent = `Viewer package not found; showing Studio fallback grid for ${data.images.length} images.`;
       root.className = 'fallback';
-      root.innerHTML = '<p>Build/copy <code>@constellation/viewer</code> into <code>/viewer</code> to get the 3D fly-through. Studio serving and image URLs are working.</p><div class="grid"></div>';
+      root.innerHTML = '<p>Build/copy <code>@image-garden/viewer</code> into <code>/viewer</code> to get the 3D fly-through. Studio serving and image URLs are working.</p><div class="grid"></div>';
       const grid = root.querySelector('.grid');
       for (const image of data.images) {
         const card = document.createElement('article');
@@ -266,9 +266,9 @@ def find_default_viewer_dist(start: Path) -> Path | None:
 def find_viewer_entry_file(viewer_dist: Path) -> Path | None:
     """Return the most likely ESM entry file from a built viewer dist."""
     preferred_names = [
-        "constellation-viewer.js",
-        "constellation-viewer.es.js",
-        "constellation-viewer.mjs",
+        "image-garden-viewer.js",
+        "image-garden-viewer.es.js",
+        "image-garden-viewer.mjs",
         "viewer.js",
         "viewer.mjs",
         "index.js",
@@ -335,7 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--viewer-dist",
         type=Path,
         default=None,
-        help="Directory containing built @constellation/viewer JS files.",
+        help="Directory containing built @image-garden/viewer JS files.",
     )
     parser.add_argument(
         "--no-open",

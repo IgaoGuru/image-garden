@@ -69,14 +69,14 @@ def test_viewer_entry_module_detects_and_reexports_built_viewer(
 ) -> None:
     viewer_dist = tmp_path / "dist"
     viewer_dist.mkdir()
-    entry = viewer_dist / "constellation-viewer.es.js"
+    entry = viewer_dist / "image-garden-viewer.es.js"
     entry.write_text("export function mount() {}\n", encoding="utf-8")
 
     detected = find_viewer_entry_file(viewer_dist)
 
     assert detected == entry
     assert viewer_entry_module(viewer_dist, entry) == (
-        'export * from "/viewer/constellation-viewer.es.js";\n'
+        'export * from "/viewer/image-garden-viewer.es.js";\n'
     )
 
 

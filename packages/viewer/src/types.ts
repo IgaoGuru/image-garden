@@ -157,7 +157,7 @@ export interface SpriteOptions {
   atlasMaxPages?: number;
 }
 
-export interface ConstellationViewerOptions {
+export interface ImageGardenViewerOptions {
   layout?: LayoutOptions;
   controls?: ControlsOptions;
   sprites?: SpriteOptions;
@@ -171,7 +171,7 @@ export interface ConstellationViewerOptions {
   renderer?: WebGLRendererParameters;
   onSelect?: (image: ConstellationImage) => void;
   onHover?: (image: ConstellationImage | null) => void;
-  onReady?: (viewer: ConstellationViewer) => void;
+  onReady?: (viewer: ImageGardenViewer) => void;
 }
 
 export interface PositionedImage extends ConstellationImage {
@@ -216,7 +216,7 @@ export interface ViewerDebugStats {
   };
 }
 
-export interface ConstellationViewer {
+export interface ImageGardenViewer {
   readonly container: HTMLElement;
   readonly data: ConstellationData;
   readonly positions: PositionedImage[];
@@ -228,3 +228,8 @@ export interface ConstellationViewer {
   setSelected(id: string | null): void;
   getDebugStats(): ViewerDebugStats;
 }
+
+/** Backward-compatible type alias for pre-rename consumers. */
+export type ConstellationViewerOptions = ImageGardenViewerOptions;
+/** Backward-compatible type alias for pre-rename consumers. */
+export type ConstellationViewer = ImageGardenViewer;

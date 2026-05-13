@@ -108,7 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--viewer-dist",
         type=Path,
         default=None,
-        help="Built @constellation/viewer dist directory.",
+        help="Built @image-garden/viewer dist directory.",
     )
     parser.add_argument(
         "--playview-dist",

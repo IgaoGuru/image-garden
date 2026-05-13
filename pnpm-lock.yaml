@@ -45,7 +45,7 @@ importers:
 
   playview:
     dependencies:
-      '@constellation/viewer':
+      '@image-garden/viewer':
         specifier: workspace:*
         version: link:../packages/viewer
     devDependencies:
