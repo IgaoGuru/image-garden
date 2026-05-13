@@ -46,6 +46,15 @@
               <input id="layout-jitter-half-life" type="range" min="1" max="100" step="1" />
               <label for="layout-jitter-max">max jitter <output id="layout-jitter-max-value" for="layout-jitter-max">80</output></label>
               <input id="layout-jitter-max" type="range" min="0" max="300" step="5" />
+              <label for="lod-distance">max render distance <output id="lod-distance-value" for="lod-distance">1000</output></label>
+              <input id="lod-distance" type="range" min="100" max="3000" step="50" />
+              <label for="lod-unload-distance">unload distance <output id="lod-unload-distance-value" for="lod-unload-distance">1200</output></label>
+              <input id="lod-unload-distance" type="range" min="100" max="4000" step="50" />
+              <label for="lod-min-screen-height">min screen height <output id="lod-min-screen-height-value" for="lod-min-screen-height">20px</output></label>
+              <input id="lod-min-screen-height" type="range" min="0" max="80" step="1" />
+              <label for="lod-max-cards">max textured cards <output id="lod-max-cards-value" for="lod-max-cards">9000</output></label>
+              <input id="lod-max-cards" type="range" min="100" max="12000" step="100" />
+              <label class="toggle-row"><input id="lod-frustum-enabled" type="checkbox" /> frustum cull cards</label>
               <button id="layout-apply" type="button">apply + re-render</button>
             </div>
           </details>

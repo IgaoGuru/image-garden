@@ -50,6 +50,11 @@ interface LayoutTuning {
   duplicateJitterMin: number;
   duplicateJitterHalfLife: number;
   duplicateJitterMax: number;
+  lazyLoadDistance: number;
+  textureUnloadDistance: number;
+  minCardScreenHeightPx: number;
+  maxTexturedCards: number;
+  frustumCullCards: boolean;
 }
 
 declare global {
@@ -83,6 +88,15 @@ const layoutJitterHalfLifeInput = mustQuery<HTMLInputElement>('#layout-jitter-ha
 const layoutJitterHalfLifeValue = mustQuery<HTMLOutputElement>('#layout-jitter-half-life-value');
 const layoutJitterMaxInput = mustQuery<HTMLInputElement>('#layout-jitter-max');
 const layoutJitterMaxValue = mustQuery<HTMLOutputElement>('#layout-jitter-max-value');
+const lodDistanceInput = mustQuery<HTMLInputElement>('#lod-distance');
+const lodDistanceValue = mustQuery<HTMLOutputElement>('#lod-distance-value');
+const lodUnloadDistanceInput = mustQuery<HTMLInputElement>('#lod-unload-distance');
+const lodUnloadDistanceValue = mustQuery<HTMLOutputElement>('#lod-unload-distance-value');
+const lodMinScreenHeightInput = mustQuery<HTMLInputElement>('#lod-min-screen-height');
+const lodMinScreenHeightValue = mustQuery<HTMLOutputElement>('#lod-min-screen-height-value');
+const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
+const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
+const lodFrustumEnabled = mustQuery<HTMLInputElement>('#lod-frustum-enabled');
 const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
 const windVolumeInput = mustQuery<HTMLInputElement>('#wind-volume');
 const windVolumeValue = mustQuery<HTMLOutputElement>('#wind-volume-value');
@@ -127,6 +141,11 @@ const defaultLayoutTuning: LayoutTuning = {
   duplicateJitterMin: 5,
   duplicateJitterHalfLife: 8,
   duplicateJitterMax: 10,
+  lazyLoadDistance: 1_000,
+  textureUnloadDistance: 1_200,
+  minCardScreenHeightPx: 20,
+  maxTexturedCards: 9_000,
+  frustumCullCards: true,
 };
 let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
 
@@ -200,12 +219,12 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         atlas: true,
         atlasPageConcurrency: 6,
         atlasMaxPages: 24,
-        lazyLoadDistance: 1_000,
-        textureUnloadDistance: 1_200,
-        maxTexturedCards: 9_000,
-        maxLoadedTextures: 9_000,
-        minCardScreenHeightPx: 20,
-        frustumCullCards: true,
+        lazyLoadDistance: layoutTuning.lazyLoadDistance,
+        textureUnloadDistance: layoutTuning.textureUnloadDistance,
+        maxTexturedCards: layoutTuning.maxTexturedCards,
+        maxLoadedTextures: layoutTuning.maxTexturedCards,
+        minCardScreenHeightPx: layoutTuning.minCardScreenHeightPx,
+        frustumCullCards: layoutTuning.frustumCullCards,
       },
       layout: currentLayoutOptions(),
     },
@@ -276,6 +295,11 @@ function setupLayoutControls(): void {
     layoutJitterMinInput,
     layoutJitterHalfLifeInput,
     layoutJitterMaxInput,
+    lodDistanceInput,
+    lodUnloadDistanceInput,
+    lodMinScreenHeightInput,
+    lodMaxCardsInput,
+    lodFrustumEnabled,
   ]) {
     input.addEventListener('input', () => {
       layoutTuning = readLayoutControls();
@@ -309,6 +333,11 @@ function readLayoutControls(): LayoutTuning {
     duplicateJitterMin: numericInput(layoutJitterMinInput, defaultLayoutTuning.duplicateJitterMin),
     duplicateJitterHalfLife: numericInput(layoutJitterHalfLifeInput, defaultLayoutTuning.duplicateJitterHalfLife),
     duplicateJitterMax: numericInput(layoutJitterMaxInput, defaultLayoutTuning.duplicateJitterMax),
+    lazyLoadDistance: numericInput(lodDistanceInput, defaultLayoutTuning.lazyLoadDistance),
+    textureUnloadDistance: numericInput(lodUnloadDistanceInput, defaultLayoutTuning.textureUnloadDistance),
+    minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
+    maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
+    frustumCullCards: lodFrustumEnabled.checked,
   };
 }
 
@@ -324,6 +353,15 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   layoutJitterHalfLifeValue.value = tuning.duplicateJitterHalfLife.toFixed(0);
   layoutJitterMaxInput.value = String(tuning.duplicateJitterMax);
   layoutJitterMaxValue.value = tuning.duplicateJitterMax.toFixed(0);
+  lodDistanceInput.value = String(tuning.lazyLoadDistance);
+  lodDistanceValue.value = tuning.lazyLoadDistance.toFixed(0);
+  lodUnloadDistanceInput.value = String(tuning.textureUnloadDistance);
+  lodUnloadDistanceValue.value = tuning.textureUnloadDistance.toFixed(0);
+  lodMinScreenHeightInput.value = String(tuning.minCardScreenHeightPx);
+  lodMinScreenHeightValue.value = `${tuning.minCardScreenHeightPx.toFixed(0)}px`;
+  lodMaxCardsInput.value = String(tuning.maxTexturedCards);
+  lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
+  lodFrustumEnabled.checked = tuning.frustumCullCards;
 }
 
 async function rerenderGarden(): Promise<void> {
@@ -335,7 +373,7 @@ async function rerenderGarden(): Promise<void> {
   await nextFrame();
   rerendering.classList.remove('visible');
   rerendering.setAttribute('aria-hidden', 'true');
-  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · jitter ${layoutTuning.duplicateJitter ? 'on' : 'off'}`;
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
 }
 
 function numericInput(input: HTMLInputElement, fallback: number): number {
