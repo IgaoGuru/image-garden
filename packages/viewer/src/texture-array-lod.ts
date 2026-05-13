@@ -4,11 +4,13 @@ import {
   DoubleSide,
   DynamicDrawUsage,
   Float32BufferAttribute,
+  Frustum,
   GLSL3,
   Group,
   InstancedBufferAttribute,
   InstancedMesh,
   LinearFilter,
+  Matrix4,
   Object3D,
   PerspectiveCamera,
   PlaneGeometry,
@@ -18,6 +20,7 @@ import {
   Raycaster,
   Scene,
   ShaderMaterial,
+  Sphere,
   RGBAFormat,
   SRGBColorSpace,
   UnsignedByteType,
@@ -84,6 +87,9 @@ export class TextureArrayLodManager {
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
   private readonly spriteOffset = new Vector3();
+  private readonly projectionView = new Matrix4();
+  private readonly frustum = new Frustum();
+  private readonly boundsSphere = new Sphere();
   private readonly records = new Map<string, TextureArrayRecord>();
   private readonly recordsByPointIndex: TextureArrayRecord[] = [];
   private readonly pageQueue: number[] = [];
@@ -100,6 +106,8 @@ export class TextureArrayLodManager {
       | 'selectedColor'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'minCardScreenHeightPx'
+      | 'frustumCullCards'
       | 'textureArray'
       | 'textureArrayIndexUrl'
       | 'atlas'
@@ -113,6 +121,8 @@ export class TextureArrayLodManager {
     selectedColor: number;
     textureUnloadDistance: number;
     pointColor: number;
+    minCardScreenHeightPx: number;
+    frustumCullCards: boolean;
     textureArrayIndexUrl: string;
     textureArrayPageConcurrency: number;
     textureArrayMaxPages: number;
@@ -130,6 +140,9 @@ export class TextureArrayLodManager {
   private totalPageLoads = 0;
   private totalPageErrors = 0;
   private desiredRecords: TextureArrayRecord[] = [];
+  private lastVisibleCandidateCount = 0;
+  private lastFrustumCulledCount = 0;
+  private lastScreenSizeCulledCount = 0;
   private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
@@ -157,6 +170,8 @@ export class TextureArrayLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
+      minCardScreenHeightPx: options.minCardScreenHeightPx ?? 0,
+      frustumCullCards: options.frustumCullCards ?? true,
       textureArrayIndexUrl: options.textureArrayIndexUrl ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
       textureArrayPageConcurrency: options.textureArrayPageConcurrency ?? 4,
       textureArrayMaxPages: options.textureArrayMaxPages ?? 16,
@@ -214,7 +229,7 @@ export class TextureArrayLodManager {
 
     if (this.updateAccumulator >= 0.12) {
       this.updateAccumulator = 0;
-      this.updateCards(camera.position, camera.quaternion);
+      this.updateCards(camera);
       this.updateHover(camera);
     }
   }
@@ -285,16 +300,43 @@ export class TextureArrayLodManager {
     const entryById = new Map(index.entries.map((entry) => [entry.id, entry]));
     for (const record of this.records.values()) record.textureArray = entryById.get(record.image.id);
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
-    if (camera) this.updateCards(camera.position, camera.quaternion);
+    if (camera) this.updateCards(camera);
   }
 
-  private updateCards(cameraPosition: Vector3, cameraQuaternion: Quaternion): void {
+  private updateCards(camera: PerspectiveCamera): void {
     const startedAt = performance.now();
     const records = [...this.records.values()];
-    for (const record of records) record.lastDistance = record.position.distanceTo(cameraPosition);
+    camera.updateMatrixWorld(true);
+    camera.getWorldDirection(this.cameraForward).normalize();
+    this.projectionView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.projectionView);
 
-    this.desiredRecords = records
-      .filter((record) => record.textureArray && record.lastDistance <= this.options.lazyLoadDistance)
+    let frustumCulledCount = 0;
+    let screenSizeCulledCount = 0;
+    const candidates: TextureArrayRecord[] = [];
+    for (const record of records) {
+      record.lastDistance = record.position.distanceTo(camera.position);
+      if (!record.textureArray || record.lastDistance > this.options.lazyLoadDistance) continue;
+      const [width, height] = this.getCardDimensions(record.image);
+      const radius = Math.hypot(width, height) * 0.5;
+      if (this.options.frustumCullCards) {
+        this.boundsSphere.set(record.position, radius);
+        if (!this.frustum.intersectsSphere(this.boundsSphere)) {
+          frustumCulledCount += 1;
+          continue;
+        }
+      }
+      if (this.screenHeightPx(record, height, camera) < this.options.minCardScreenHeightPx) {
+        screenSizeCulledCount += 1;
+        continue;
+      }
+      candidates.push(record);
+    }
+
+    this.lastFrustumCulledCount = frustumCulledCount;
+    this.lastScreenSizeCulledCount = screenSizeCulledCount;
+    this.lastVisibleCandidateCount = candidates.length;
+    this.desiredRecords = candidates
       .sort((a, b) => a.lastDistance - b.lastDistance)
       .slice(0, this.options.maxTexturedCards);
     if (this.selectedId) {
@@ -308,7 +350,7 @@ export class TextureArrayLodManager {
       if (record.textureArray) this.requestPage(record.textureArray.page);
     }
     this.evictUnusedPages();
-    this.rebuildPageInstances(cameraQuaternion);
+    this.rebuildPageInstances(camera.quaternion);
     this.debugStats = this.debugSnapshot(performance.now() - startedAt);
   }
 
@@ -398,6 +440,15 @@ export class TextureArrayLodManager {
     }
   }
 
+  private screenHeightPx(record: TextureArrayRecord, worldHeight: number, camera: PerspectiveCamera): number {
+    this.spriteOffset.subVectors(record.position, camera.position);
+    const depth = this.spriteOffset.dot(this.cameraForward);
+    if (depth <= camera.near) return 0;
+    const viewportHeight = this.domElement.clientHeight || window.innerHeight || 1;
+    const fovRadians = (camera.fov * Math.PI) / 180;
+    return (worldHeight * viewportHeight) / (2 * Math.tan(fovRadians / 2) * depth);
+  }
+
   private evictUnusedPages(): void {
     if (this.pageViews.size <= this.options.textureArrayMaxPages) return;
     const desiredPages = new Set(this.desiredRecords.map((record) => record.textureArray?.page).filter((page): page is number => page !== undefined));
@@ -430,6 +481,10 @@ export class TextureArrayLodManager {
       capacity: Math.max(0, this.options.maxTexturedCards - activeCards),
       candidateCount,
       nearestUnloadedDistance,
+      visibleCandidateCount: this.lastVisibleCandidateCount,
+      frustumCulledCount: this.lastFrustumCulledCount,
+      screenSizeCulledCount: this.lastScreenSizeCulledCount,
+      minCardScreenHeightPx: this.options.minCardScreenHeightPx,
       lazyLoadDistance: this.options.lazyLoadDistance,
       textureUnloadDistance: this.options.textureUnloadDistance,
       maxTexturedCards: this.options.maxTexturedCards,
@@ -448,6 +503,10 @@ export class TextureArrayLodManager {
       capacity: this.options.maxTexturedCards,
       candidateCount: 0,
       nearestUnloadedDistance: null,
+      visibleCandidateCount: 0,
+      frustumCulledCount: 0,
+      screenSizeCulledCount: 0,
+      minCardScreenHeightPx: this.options.minCardScreenHeightPx,
       lazyLoadDistance: this.options.lazyLoadDistance,
       textureUnloadDistance: this.options.textureUnloadDistance,
       maxTexturedCards: this.options.maxTexturedCards,

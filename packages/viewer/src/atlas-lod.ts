@@ -100,6 +100,8 @@ export class AtlasLodManager {
       | 'selectedColor'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'minCardScreenHeightPx'
+      | 'frustumCullCards'
       | 'textureArray'
       | 'textureArrayIndexUrl'
       | 'textureArrayPageConcurrency'

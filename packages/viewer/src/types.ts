@@ -134,6 +134,10 @@ export interface SpriteOptions {
   pointOpacity?: number;
   /** World-space raycast radius for LOD point picking. */
   pointPickRadius?: number;
+  /** Promote only cards at least this tall on screen; smaller/farther images stay as points. Defaults to 0. */
+  minCardScreenHeightPx?: number;
+  /** Skip textured-card promotion for records outside the camera frustum. Defaults to true. */
+  frustumCullCards?: boolean;
   /** Maximum fraction of viewport height a sprite may occupy before it shrinks. Set to Infinity to disable. */
   maxViewportHeight?: number;
   billboard?: boolean;
@@ -192,6 +196,10 @@ export interface ViewerDebugStats {
     capacity: number;
     candidateCount: number;
     nearestUnloadedDistance: number | null;
+    visibleCandidateCount?: number;
+    frustumCulledCount?: number;
+    screenSizeCulledCount?: number;
+    minCardScreenHeightPx?: number;
     lazyLoadDistance: number;
     textureUnloadDistance: number;
     maxTexturedCards: number;

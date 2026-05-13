@@ -204,6 +204,8 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         textureUnloadDistance: 1_200,
         maxTexturedCards: 9_000,
         maxLoadedTextures: 9_000,
+        minCardScreenHeightPx: 20,
+        frustumCullCards: true,
       },
       layout: currentLayoutOptions(),
     },

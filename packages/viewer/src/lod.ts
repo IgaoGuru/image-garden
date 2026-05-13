@@ -55,6 +55,8 @@ export class PointLodManager {
       | 'maxTexturedCards'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'minCardScreenHeightPx'
+      | 'frustumCullCards'
       | 'textureArray'
       | 'textureArrayIndexUrl'
       | 'textureArrayPageConcurrency'
