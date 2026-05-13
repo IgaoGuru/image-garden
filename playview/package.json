@@ -2,7 +2,7 @@
   "name": "@constellation/playview",
   "version": "0.1.0",
   "private": true,
-  "description": "Consumer browser shell for Constellation.",
+  "description": "Image Garden browser application shell that wires Studio data into Viewer.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",

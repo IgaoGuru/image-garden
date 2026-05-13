@@ -1,6 +1,8 @@
-# Constellation Studio
+# Image Garden Studio
 
-Local ingestion, embedding, and preview tools for `@constellation/viewer`.
+Local CLI/backend/data engine for Image Garden.
+
+Studio owns folder import, image sanitization, thumbnail generation, embedding/cache work, layout computation, SQLite runtime asset storage, and the local HTTP API consumed by Playview. It can serve configured static Viewer/Playview assets for development and releases, but product UI behavior belongs in Playview and generic rendering behavior belongs in `@constellation/viewer`.
 
 ## What Studio does now
 
@@ -125,7 +127,7 @@ API routes:
 - `POST /api/index/pause`
 - `POST /api/index/resume`
 
-Runtime asset responses contain `id`, `thumbnailUrl`, optional `fullUrl`, size/metadata, and a persisted `position`; embeddings remain indexer/backend data and are not emitted on this runtime API.
+Runtime asset responses contain `id`, `thumbnailUrl`, optional `fullUrl`, size/metadata, and a persisted `position`; embeddings remain indexer/backend data and are not emitted on this runtime API. This API is Studio's contract with Playview and with the Viewer `createStudioDataSource()` adapter.
 
 ## Serve preview
 

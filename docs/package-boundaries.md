@@ -69,3 +69,9 @@ It should remain free to be opinionated. It is not the generic viewer package; i
 - Texture-page acceleration is explicit from the Viewer perspective: Playview passes `/api/texture-array/index.json?...` and `/api/atlas/index.json` URLs into Viewer options.
 - `@constellation/viewer` can use `createStudioDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths to `createFetchDataSource()` or use `createStaticDataSource()`.
 - Playview remains responsible for Image Garden behavior and defaults; Viewer remains responsible for rendering those options efficiently.
+
+## Remaining coupling allowed by design
+
+Studio still serves configured Playview and Viewer static files in the packaged local app. This is acceptable as deployment glue: Studio should know where static assets are, but not how Playview menus, onboarding, audio, or layout tuning behave.
+
+Viewer still includes `createStudioDataSource()` as a convenience adapter. This is acceptable as an explicit adapter: the default renderer path remains direct data/static data/custom `ConstellationDataSource`, and accelerated atlas/texture-array rendering requires URLs supplied by the host application.
