@@ -6,8 +6,24 @@
     <title>Image Garden</title>
     <meta
       name="description"
-      content="Image Garden is a local-first visual map for exploring large image libraries by meaning."
+      content="Image Garden is a software toy for exploring your photo library as a 3D embedding map."
     />
+    <meta property="og:title" content="Image Garden" />
+    <meta
+      property="og:description"
+      content="Explore your photo library as a 3D embedding map."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://igaoguru.github.io/image-garden/" />
+    <meta property="og:image" content="https://igaoguru.github.io/image-garden/og-image.svg" />
+    <meta property="og:video" content="https://file.garden/aDx7rtkwXCXfZGMO/imagegarden/image-garden-3-final-compressed.mp4" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Image Garden" />
+    <meta
+      name="twitter:description"
+      content="Explore your photo library as a 3D embedding map."
+    />
+    <meta name="twitter:image" content="https://igaoguru.github.io/image-garden/og-image.svg" />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -19,18 +35,18 @@
         </p>
       </header>
 
-      <section class="status-visual" aria-label="embedding status visualization">
+      <section class="status-visual" aria-label="Image Garden interface preview">
         <div class="clip-frame">
           <video autoplay muted loop playsinline preload="metadata" aria-label="Image Garden interface preview">
             <source src="https://file.garden/aDx7rtkwXCXfZGMO/imagegarden/image-garden-3-final-compressed.mp4" type="video/mp4" />
           </video>
-        <ol class="log" aria-label="embedding log">
-        </ol>
+        </div>
+        <ol class="log" aria-label="embedding log"></ol>
       </section>
 
-        <p class="sublede">
-          Drop in a folder. Image Garden embeds your images locally, arranges them by visual meaning, and lets you fly through the result.
-        </p>
+      <p class="sublede">
+        Drop in a folder. Image Garden embeds your images locally, arranges them by visual meaning, and lets you fly through the result.
+      </p>
 
       <details class="nerds">
         <summary>for rendering / ML nerds</summary>
@@ -56,14 +72,22 @@
 
       <section class="install" aria-labelledby="install-title">
         <h2 id="install-title">install</h2>
-        <code>pnpm install -g image-garden</code>
+        <div class="install-grid">
+          <section aria-labelledby="install-macos">
+            <h3 id="install-macos">macOS Apple Silicon</h3>
+            <code>/bin/bash -c "$(curl -fsSL https://github.com/IgaoGuru/image-garden/releases/latest/download/install.sh)"</code>
+          </section>
+          <section aria-labelledby="install-windows">
+            <h3 id="install-windows">Windows x64</h3>
+            <code>irm https://github.com/IgaoGuru/image-garden/releases/latest/download/install.ps1 | iex</code>
+          </section>
+        </div>
       </section>
 
-
       <footer class="footer">
-        <a href="https://github.com/igorrocha/photoview">github</a>
+        <a href="https://github.com/IgaoGuru/image-garden">github</a>
         <span aria-hidden="true">/</span>
-        <a href="https://github.com/igorrocha/photoview#readme">readme</a>
+        <a href="https://github.com/IgaoGuru/image-garden#readme">readme</a>
       </footer>
     </main>
   </body>

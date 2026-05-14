@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Image Garden</title>
+  <desc id="desc">Image Garden landing card</desc>
+  <rect width="1200" height="630" fill="#0d0c0b"/>
+  <g fill="#d6ebce" opacity="0.32">
+    <circle cx="170" cy="120" r="3"/>
+    <circle cx="270" cy="250" r="2"/>
+    <circle cx="430" cy="150" r="3"/>
+    <circle cx="760" cy="110" r="2"/>
+    <circle cx="980" cy="230" r="3"/>
+    <circle cx="1080" cy="420" r="2"/>
+    <circle cx="650" cy="510" r="3"/>
+    <circle cx="230" cy="480" r="2"/>
+  </g>
+  <g stroke="#d6ebce" stroke-opacity="0.18" fill="none">
+    <path d="M170 120 270 250 430 150 760 110 980 230 1080 420 650 510 230 480 170 120"/>
+    <path d="M270 250 650 510 980 230"/>
+  </g>
+  <text x="92" y="306" fill="#d6ebce" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="94" letter-spacing="-7">Image Garden</text>
+  <text x="98" y="372" fill="#d6ebce" fill-opacity="0.66" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="28">a software toy for exploring your photo library</text>
+  <text x="98" y="416" fill="#d6ebce" fill-opacity="0.66" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="28">as a 3D embedding map</text>
+</svg>
