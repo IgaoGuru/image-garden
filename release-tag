@@ -122,9 +122,9 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 fi
 
 if [ "$SKIP_TESTS" -eq 0 ]; then
-  run uv --directory studio run ruff check src tests
-  run uv --directory studio run basedpyright
-  run uv --directory studio run pytest
+  run uv --directory packages/studio run ruff check src tests
+  run uv --directory packages/studio run basedpyright
+  run uv --directory packages/studio run python -m pytest
   run pnpm typecheck
 fi
 

@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   resolve: {
     alias: {
-      '@image-garden/viewer': resolve(__dirname, '../packages/viewer/src/index.ts'),
+      '@image-garden/viewer': resolve(__dirname, '../viewer/src/index.ts'),
     },
   },
   server: {

@@ -78,7 +78,7 @@ Compatibility matrix for the 0.1 line:
 - Texture-page acceleration is explicit from the Viewer perspective: Playview passes `/api/texture-array/index.json?...` and `/api/atlas/index.json` URLs into Viewer options.
 - `@image-garden/viewer` can use `createStudioDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths to `createFetchDataSource()` or use `createStaticDataSource()`.
 - Playview remains responsible for Image Garden behavior and defaults; Viewer remains responsible for rendering those options efficiently.
-- `studio/tests/test_playview_contract.py` is the regression contract for the Playview-facing Studio endpoints.
+- `packages/studio/tests/test_playview_contract.py` is the regression contract for the Playview-facing Studio endpoints.
 
 ## Remaining coupling allowed by design
 

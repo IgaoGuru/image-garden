@@ -86,7 +86,11 @@ def find_bundled_playview_dist(start: Path) -> Path | None:
     """Find a bundled or repo-built Playview dist."""
     candidates = [start, *start.parents]
     for base in candidates:
-        for relative in (Path("playview-dist"), Path("playview") / "dist"):
+        for relative in (
+            Path("playview-dist"),
+            Path("packages") / "playview" / "dist",
+            Path("playview") / "dist",
+        ):
             candidate = base / relative
             if candidate.is_dir():
                 return candidate.resolve()

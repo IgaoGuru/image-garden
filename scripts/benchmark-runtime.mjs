@@ -112,7 +112,7 @@ async function startServer(dataDir) {
     'uv',
     [
       '--project',
-      'studio',
+      'packages/studio',
       'run',
       '--extra',
       'onnx',

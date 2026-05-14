@@ -1241,7 +1241,11 @@ def find_default_viewer_dist(start: Path) -> Path | None:
 def find_default_playview_dist(start: Path) -> Path | None:
     """Find bundled or repo-built Playview dist."""
     for base in [start, *start.parents]:
-        for relative in (Path("playview-dist"), Path("playview") / "dist"):
+        for relative in (
+            Path("playview-dist"),
+            Path("packages") / "playview" / "dist",
+            Path("playview") / "dist",
+        ):
             candidate = base / relative
             if candidate.is_dir():
                 return candidate

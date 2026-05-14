@@ -7,7 +7,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/IgaoGuru/image-garden.git",
-    "directory": "playview"
+    "directory": "packages/playview"
   },
   "bugs": {
     "url": "https://github.com/IgaoGuru/image-garden/issues"

@@ -37,7 +37,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @image-garden/playview typecheck
-      - run: rm -rf packages/viewer/dist playview/dist && pnpm build
+      - run: rm -rf packages/viewer/dist packages/playview/dist && pnpm build
 
   studio:
     name: Studio package
@@ -45,6 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv --project studio sync --extra onnx --dev
-      - run: uv --project studio run ruff check .
-      - run: uv --project studio run pytest -q studio/tests
+      - run: uv --project packages/studio sync --extra onnx --dev
+      - run: uv --project packages/studio run ruff check .
+      - run: uv --project packages/studio run python -m pytest -q packages/studio/tests

@@ -47,6 +47,12 @@ password required.
 
 ## Development
 
+Package layout:
+
+- `packages/viewer`: reusable `@image-garden/viewer` rendering library.
+- `packages/playview`: `@image-garden/playview` webapp shell.
+- `packages/studio`: `image-garden-studio` Python CLI/backend.
+
 ```bash
 pnpm install
 pnpm build

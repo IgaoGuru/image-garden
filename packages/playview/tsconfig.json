@@ -8,7 +8,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@image-garden/viewer": ["../packages/viewer/src/index.ts"]
+      "@image-garden/viewer": ["../viewer/src/index.ts"]
     },
     "allowImportingTsExtensions": false,
     "resolveJsonModule": true,

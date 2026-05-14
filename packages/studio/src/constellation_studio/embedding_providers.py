@@ -267,7 +267,7 @@ def onnx_runtime_missing_message() -> str:
     """Return the user-facing ONNX Runtime installation guidance."""
     return (
         "ONNX Runtime is not installed. Run `pnpm studio:sync` or "
-        "`uv --project studio sync --extra onnx`, then restart "
+        "`uv --directory packages/studio sync --extra onnx`, then restart "
         "Constellation. You can also choose the OpenCLIP advanced engine "
         "with `--embedding-engine openclip`."
     )

@@ -15,6 +15,19 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/playview:
+    dependencies:
+      '@image-garden/viewer':
+        specifier: workspace:^0.1.0
+        version: link:../viewer
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.1.12
+        version: 7.3.2(@types/node@22.19.17)
+
   packages/viewer:
     dependencies:
       three:
@@ -36,19 +49,6 @@ importers:
       vite-plugin-dts:
         specifier: ^4.5.4
         version: 4.5.4(@types/node@22.19.17)(rollup@4.60.3)(typescript@5.9.3)(vite@7.3.2(@types/node@22.19.17))
-
-  playview:
-    dependencies:
-      '@image-garden/viewer':
-        specifier: workspace:^0.1.0
-        version: link:../packages/viewer
-    devDependencies:
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vite:
-        specifier: ^7.1.12
-        version: 7.3.2(@types/node@22.19.17)
 
 packages:
 

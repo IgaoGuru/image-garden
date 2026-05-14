@@ -87,7 +87,7 @@ ignore = [
     "D213",  # incompatible with D212
     "E501",  # embedded HTML has long lines
     "EM101",
-    "EXE001", # wrappers can still be run as python studio/embed.py
+    "EXE001", # wrappers can still be run as python packages/studio/embed.py
     "PLC0415", # lazy ML imports keep non-ML commands fast
     "PLR2004",
     "PT017",
