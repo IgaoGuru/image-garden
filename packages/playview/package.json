@@ -1,0 +1,47 @@
+{
+  "name": "@image-garden/playview",
+  "version": "0.1.0",
+  "description": "Image Garden browser application shell that wires Studio data into Viewer.",
+  "license": "GPL-3.0-only",
+  "homepage": "https://github.com/IgaoGuru/image-garden#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IgaoGuru/image-garden.git",
+    "directory": "packages/playview"
+  },
+  "bugs": {
+    "url": "https://github.com/IgaoGuru/image-garden/issues"
+  },
+  "keywords": [
+    "image-garden",
+    "photos",
+    "embeddings",
+    "threejs",
+    "playview"
+  ],
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@image-garden/viewer": "workspace:^0.1.0"
+  },
+  "imageGarden": {
+    "studioApi": "0.1",
+    "viewer": "^0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12"
+  }
+}

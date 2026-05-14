@@ -13,14 +13,30 @@ export interface StaticDataSourceOptions {
   status?: Partial<IndexStatus>;
 }
 
+export interface FetchDataSourceEndpoints {
+  status: string;
+  assets: string;
+  nearAssets: string;
+  asset: (id: string) => string;
+}
+
 export interface FetchDataSourceOptions {
-  /** Base URL for the local API, e.g. `http://127.0.0.1:8000`. Defaults to same-origin. */
+  /** Base URL for an HTTP asset API, e.g. `http://127.0.0.1:8000`. Defaults to same-origin. */
   baseUrl?: string;
-  /** Number of assets requested from `/api/assets` for the initial view. */
+  /** Explicit REST endpoint paths. Defaults match the Image Garden/Studio local API adapter. */
+  endpoints?: Partial<FetchDataSourceEndpoints>;
+  /** Number of assets requested from the initial asset endpoint. */
   initialLimit?: number;
   initialOffset?: number;
   fetch?: typeof fetch;
 }
+
+export const STUDIO_API_ENDPOINTS: FetchDataSourceEndpoints = {
+  status: '/api/status',
+  assets: '/api/assets',
+  nearAssets: '/api/assets/near',
+  asset: (id: string) => `/api/assets/${encodeURIComponent(id)}`,
+};
 
 /** Convert runtime assets into the legacy `ConstellationData` shape consumed by `mount`. */
 export function runtimeAssetsToData(assets: readonly RuntimeAsset[]): ConstellationData {
@@ -102,20 +118,26 @@ export function createStaticDataSource(
   };
 }
 
+export function createStudioDataSource(
+  options: Omit<FetchDataSourceOptions, 'endpoints'> = {},
+): ConstellationDataSource {
+  return createFetchDataSource({ ...options, endpoints: STUDIO_API_ENDPOINTS });
+}
+
 export function createFetchDataSource(options: FetchDataSourceOptions = {}): ConstellationDataSource {
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? '');
   const fetchImpl = options.fetch ?? fetch;
+  const endpoints: FetchDataSourceEndpoints = { ...STUDIO_API_ENDPOINTS, ...options.endpoints };
 
   return {
     async getStatus() {
-      return parseStatus(await fetchJson(fetchImpl, `${baseUrl}/api/status`));
+      return parseStatus(await fetchJson(fetchImpl, endpointUrl(baseUrl, endpoints.status)));
     },
     async getInitialAssets() {
       const params = new URLSearchParams();
       if (options.initialLimit !== undefined) params.set('limit', String(options.initialLimit));
       if (options.initialOffset !== undefined) params.set('offset', String(options.initialOffset));
-      const query = params.toString();
-      return parseAssets(await fetchJson(fetchImpl, `${baseUrl}/api/assets${query ? `?${query}` : ''}`));
+      return parseAssets(await fetchJson(fetchImpl, withQuery(endpointUrl(baseUrl, endpoints.assets), params)));
     },
     async getNearbyAssets(query: NearbyQuery) {
       const params = new URLSearchParams({
@@ -125,10 +147,10 @@ export function createFetchDataSource(options: FetchDataSourceOptions = {}): Con
         radius: String(query.radius),
       });
       if (query.limit !== undefined) params.set('limit', String(query.limit));
-      return parseAssets(await fetchJson(fetchImpl, `${baseUrl}/api/assets/near?${params}`));
+      return parseAssets(await fetchJson(fetchImpl, withQuery(endpointUrl(baseUrl, endpoints.nearAssets), params)));
     },
     async getAsset(id: string) {
-      const value = await fetchJson(fetchImpl, `${baseUrl}/api/assets/${encodeURIComponent(id)}`, { allowNotFound: true });
+      const value = await fetchJson(fetchImpl, endpointUrl(baseUrl, endpoints.asset(id)), { allowNotFound: true });
       return value === null ? null : parseAsset(value);
     },
   };
@@ -193,6 +215,18 @@ async function fetchJson(
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+}
+
+function endpointUrl(baseUrl: string, endpoint: string): string {
+  if (/^https?:\/\//.test(endpoint)) return endpoint;
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${baseUrl}${path}`;
+}
+
+function withQuery(url: string, params: URLSearchParams): string {
+  const query = params.toString();
+  if (!query) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${query}`;
 }
 
 function parseStatus(value: unknown): IndexStatus {

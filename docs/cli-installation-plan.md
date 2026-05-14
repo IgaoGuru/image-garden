@@ -2,7 +2,7 @@
 
 ## Top-level goal
 
-Stop trying to feel like a desktop `.app` for now. Make Constellation a first-class CLI-managed local app that installs cleanly, can always be started/stopped/reopened, updates safely, explains failures, and leaves the user with one obvious command:
+Make Image Garden a first-class CLI-managed local web app that installs cleanly, can always be started/stopped/reopened, updates safely, explains failures, and leaves the user with one obvious command:
 
 ```bash
 constellation start
@@ -143,10 +143,10 @@ from a new terminal.
 1. Create a Python CLI module in Studio, e.g.
 
 ```text
-studio/src/constellation_studio/cli.py
+packages/studio/src/constellation_studio/cli.py
 ```
 
-2. Add console script in `studio/pyproject.toml`:
+2. Add console script in `packages/studio/pyproject.toml`:
 
 ```toml
 constellation = "constellation_studio.cli:main"

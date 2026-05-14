@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;height:100vh">
+    <div id="app" style="width:100%;height:100%"></div>
+    <script type="module">
+      import { mount } from '@image-garden/viewer';
+
+      mount(document.querySelector('#app'), {
+        images: [
+          { id: 'one', thumbnailUrl: './thumbs/one.jpg', fullUrl: './images/one.jpg', position: [0, 0, 0], width: 1200, height: 800 },
+          { id: 'two', thumbnailUrl: './thumbs/two.jpg', fullUrl: './images/two.jpg', position: [16, 4, -8], width: 800, height: 1200 },
+        ],
+      }, {
+        layout: { center: false },
+        sprites: { renderMode: 'cards' },
+      });
+    </script>
+  </body>
+</html>

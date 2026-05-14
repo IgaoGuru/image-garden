@@ -16,5 +16,4 @@ __pycache__/
 /constellation.json
 /constellation.studio.json
 /constellation-assets/
-/models/*.onnx
-/models/*.onnx.json
+/models/

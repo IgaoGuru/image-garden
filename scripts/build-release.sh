@@ -15,25 +15,27 @@ mkdir -p "$STAGE"
 cd "$ROOT"
 printf 'Building web assets…\n'
 pnpm install --frozen-lockfile
-pnpm --filter @constellation/viewer build
-pnpm --filter @constellation/playview build
+pnpm --filter @image-garden/viewer build
+pnpm --filter @image-garden/playview build
 
 printf 'ONNX model is not bundled; installer downloads it to app data on first run.\n'
 
 printf 'Preparing Python package lock/environment metadata…\n'
-uv --directory studio lock
+uv --directory packages/studio lock
 
 printf 'Staging release files…\n'
 mkdir -p "$STAGE/studio" "$STAGE/viewer-dist" "$STAGE/playview-dist" "$STAGE/scripts"
 rsync -a \
   --exclude '.venv' \
+  --exclude '.ruff_cache' \
   --exclude '.pytest_cache' \
   --exclude '__pycache__' \
-  studio/ "$STAGE/studio/"
+  --exclude 'tests' \
+  packages/studio/ "$STAGE/studio/"
 rsync -a packages/viewer/dist/ "$STAGE/viewer-dist/"
-rsync -a playview/dist/ "$STAGE/playview-dist/"
+rsync -a packages/playview/dist/ "$STAGE/playview-dist/"
 cp scripts/install.sh scripts/install.ps1 scripts/install_tui.py "$STAGE/scripts/"
-cp README.md spec.md package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
+cp README.md docs/spec.md package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
 printf '%s\n' "$VERSION" > "$STAGE/VERSION"
 
 cat > "$STAGE/image-garden" <<'SH'

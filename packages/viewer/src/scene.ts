@@ -7,7 +7,7 @@ import {
   type WebGLRendererParameters,
 } from 'three';
 
-import type { ConstellationViewerOptions } from './types';
+import type { ImageGardenViewerOptions } from './types';
 
 export interface SceneHost {
   scene: Scene;
@@ -19,7 +19,7 @@ export interface SceneHost {
 
 export function createSceneHost(
   container: HTMLElement,
-  options: ConstellationViewerOptions = {},
+  options: ImageGardenViewerOptions = {},
 ): SceneHost {
   const scene = new Scene();
   scene.background = new Color(options.backgroundColor ?? 0x05050a);

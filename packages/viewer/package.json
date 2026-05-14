@@ -1,20 +1,43 @@
 {
-  "name": "@constellation/viewer",
+  "name": "@image-garden/viewer",
   "version": "0.1.0",
-  "description": "Flyable 3D image embedding constellation viewer",
+  "description": "Reusable flyable 3D viewer for positioned image maps",
+  "license": "GPL-3.0-only",
+  "homepage": "https://github.com/IgaoGuru/image-garden#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IgaoGuru/image-garden.git",
+    "directory": "packages/viewer"
+  },
+  "bugs": {
+    "url": "https://github.com/IgaoGuru/image-garden/issues"
+  },
+  "keywords": [
+    "image",
+    "embeddings",
+    "threejs",
+    "webgl",
+    "viewer",
+    "umap",
+    "lod"
+  ],
+  "sideEffects": false,
   "type": "module",
-  "main": "./dist/constellation-viewer.umd.cjs",
-  "module": "./dist/constellation-viewer.js",
+  "main": "./dist/image-garden-viewer.umd.cjs",
+  "module": "./dist/image-garden-viewer.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/constellation-viewer.js",
-      "require": "./dist/constellation-viewer.umd.cjs"
+      "import": "./dist/image-garden-viewer.js",
+      "require": "./dist/image-garden-viewer.umd.cjs"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "docs",
+    "examples"
   ],
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -35,6 +58,9 @@
   },
   "peerDependencies": {
     "three": ">=0.160.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependenciesMeta": {
     "three": {

@@ -112,11 +112,11 @@ async function startServer(dataDir) {
     'uv',
     [
       '--project',
-      'studio',
+      'packages/studio',
       'run',
       '--extra',
       'onnx',
-      'constellation-app',
+      'image-garden-app',
       '--data-dir',
       dataDir,
       '--host',
