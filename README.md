@@ -2,7 +2,9 @@
 
 Image Garden is a software toy for exploring your photo library as a 3D embedding map.
 
-![Image Garden demo](https://file.garden/aDx7rtkwXCXfZGMO/imagegarden/image-garden-3-final-compressed2.gif)
+<video src="/docs/image-garden-demo.mp4" controls muted loop playsinline width="100%">
+  <a href="/docs/image-garden-demo.mp4">Watch the Image Garden demo video.</a>
+</video>
 
 **Website:** https://igaoguru.github.io/image-garden/
 
