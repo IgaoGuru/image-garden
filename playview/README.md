@@ -1,4 +1,4 @@
-# @constellation/playview
+# @image-garden/playview
 
 Image Garden's browser application shell.
 
@@ -31,14 +31,16 @@ Those belong to Studio and Viewer respectively.
 ## Development
 
 ```bash
-pnpm --filter @constellation/playview dev
-pnpm --filter @constellation/playview typecheck
-pnpm --filter @constellation/playview build
+pnpm --filter @image-garden/playview dev
+pnpm --filter @image-garden/playview typecheck
+pnpm --filter @image-garden/playview build
 ```
 
-In production, Studio serves the built Playview files as configured static assets. In development, Playview expects the same local API shape exposed by Studio:
+In production, Studio serves the built Playview files as configured static assets. Playview 0.1.x requires `@image-garden/viewer` ^0.1.0 and Image Garden Studio API 0.1, exposed by `image-garden-studio` 0.1.x.
 
-- `GET /api/status`
+In development, Playview expects the same local API shape exposed by Studio:
+
+- `GET /api/status` with `studioApiVersion: "0.1"`
 - `GET /api/assets?limit=...&offset=...`
 - `POST /api/import/folder`
 - `POST /api/import/studio`

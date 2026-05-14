@@ -34,7 +34,7 @@ from constellation_studio.embedding_providers import (
     create_embedding_provider,
     preflight_embedding_provider,
 )
-from constellation_studio.index_store import IndexStore
+from constellation_studio.index_store import IndexStatus, IndexStore
 from constellation_studio.indexing import (
     ImportResult,
     default_indexing_paths,
@@ -46,13 +46,15 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8766
 DEFAULT_LIMIT = 500
 MAX_LIMIT = 5000
+STUDIO_VERSION = "0.1.0"
+STUDIO_API_VERSION = "0.1"
 
 PLAYVIEW_MISSING_HTML = """<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Constellation</title></head>
 <body style="background:#000;color:#f6f1e8;font-family:monospace;padding:24px">
   <h1>Constellation</h1>
-  <p>Playview build missing. Run <code>pnpm --filter @constellation/playview build</code>.</p>
+  <p>Playview build missing. Run <code>pnpm --filter @image-garden/playview build</code>.</p>
 </body>
 </html>
 """
@@ -284,7 +286,7 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
                 "jobPhase": "status-error",
                 "jobMessage": str(exc),
             }
-        self._send_json(status, send_body=send_body)
+        self._send_json(studio_status(status), send_body=send_body)
 
     def _post_import_folder(self) -> None:
         payload = self._read_json_body()
@@ -1177,6 +1179,15 @@ def run_tk_file_dialog() -> Path | None:
     return Path(selected).expanduser().resolve() if selected else None
 
 
+def studio_status(status: IndexStatus | Mapping[str, object]) -> dict[str, object]:
+    """Attach explicit Studio compatibility metadata to a status payload."""
+    return {
+        **dict(status),
+        "studioApiVersion": STUDIO_API_VERSION,
+        "studioVersion": STUDIO_VERSION,
+    }
+
+
 def source_capabilities() -> dict[str, object]:
     """Return BYO source types surfaced by Playview."""
     return {
@@ -1331,7 +1342,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--playview-dist",
         type=Path,
         default=None,
-        help="Optional built @constellation/playview dist directory.",
+        help="Optional built @image-garden/playview dist directory.",
     )
     parser.add_argument(
         "--embedding-engine",

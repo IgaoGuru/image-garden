@@ -36,7 +36,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @constellation/playview typecheck
+      - run: pnpm --filter @image-garden/playview typecheck
       - run: rm -rf packages/viewer/dist playview/dist && pnpm build
 
   studio:

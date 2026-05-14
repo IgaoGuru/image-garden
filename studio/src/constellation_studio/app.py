@@ -114,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--playview-dist",
         type=Path,
         default=None,
-        help="Built @constellation/playview dist directory.",
+        help="Built @image-garden/playview dist directory.",
     )
     parser.add_argument(
         "--host", default=backend.DEFAULT_HOST, help="Bind host."
@@ -195,7 +195,7 @@ def run(args: argparse.Namespace) -> int:
     if playview_dist is None:
         print(
             "warning: playview dist not found; backend will show a small "
-            "missing-build page. Run `pnpm --filter @constellation/playview "
+            "missing-build page. Run `pnpm --filter @image-garden/playview "
             "build` in development.",
         )
 

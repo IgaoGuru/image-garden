@@ -1,4 +1,5 @@
 import { mount, type ImageGardenViewer, type LayoutOptions, type RuntimeAsset } from '@image-garden/viewer';
+import { assertCompatibleStudioStatus } from './studio-contract';
 import './style.css';
 
 interface ApiStatus {
@@ -9,6 +10,8 @@ interface ApiStatus {
   jobTotal?: number;
   jobMessage?: string;
   lastImportPath?: string;
+  studioApiVersion?: string;
+  studioVersion?: string;
   [key: string]: unknown;
 }
 
@@ -172,6 +175,7 @@ async function boot(): Promise<void> {
       fetchAllAssets(),
       fetchJson<ApiStatus>('/api/status').catch(() => null),
     ]);
+    if (initialStatus) assertCompatibleStudioStatus(initialStatus);
     assets = loadedAssets;
     latestStatus = initialStatus;
     if (assets.length > 0) {
@@ -634,6 +638,7 @@ async function pollImportProgress(): Promise<void> {
   for (;;) {
     await delay(500);
     const current = await fetchJson<ApiStatus>('/api/status');
+    assertCompatibleStudioStatus(current);
     latestStatus = current;
     showProgress(current);
     if (current.state === 'error' || current.jobPhase === 'error') {
@@ -834,6 +839,7 @@ async function clearData(): Promise<void> {
 
 async function reimportLastFolder(): Promise<void> {
   const current = latestStatus ?? await fetchJson<ApiStatus>('/api/status');
+  assertCompatibleStudioStatus(current);
   const path = current.lastImportPath;
   if (!path) {
     status.textContent = 'no last folder';
@@ -870,7 +876,10 @@ function stopLiveDebug(): void {
 
 async function refreshLiveDebug(): Promise<void> {
   const current = await fetchJson<ApiStatus>('/api/status').catch(() => null);
-  if (current) latestStatus = current;
+  if (current) {
+    assertCompatibleStudioStatus(current);
+    latestStatus = current;
+  }
   debug.textContent = JSON.stringify(
     {
       ...readDebugSnapshot(),

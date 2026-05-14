@@ -65,10 +65,20 @@ It should remain free to be opinionated. It is not the generic viewer package; i
 
 ## Current compatibility contracts
 
+Compatibility matrix for the 0.1 line:
+
+| Package | Requires |
+| --- | --- |
+| `@image-garden/viewer` 0.1.x | Direct/static/custom data sources, or explicit host URLs for atlas/texture-array acceleration |
+| `image-garden-studio` 0.1.x | Python 3.13; `onnx` extra for the default ONNX engine |
+| `@image-garden/playview` 0.1.x | `@image-garden/viewer` ^0.1.0 and Studio API `0.1` |
+
+- Studio `/api/status` includes `studioApiVersion: "0.1"` and `studioVersion` so Playview can fail fast against incompatible engines.
 - Studio exposes `/api/status`, `/api/assets`, `/api/assets/near`, `/api/assets/:id`, `/api/thumbnails/:id`, and `/api/files/:id` for runtime assets.
 - Texture-page acceleration is explicit from the Viewer perspective: Playview passes `/api/texture-array/index.json?...` and `/api/atlas/index.json` URLs into Viewer options.
 - `@image-garden/viewer` can use `createStudioDataSource()` against the Studio API, but custom hosts should pass their own endpoint paths to `createFetchDataSource()` or use `createStaticDataSource()`.
 - Playview remains responsible for Image Garden behavior and defaults; Viewer remains responsible for rendering those options efficiently.
+- `studio/tests/test_playview_contract.py` is the regression contract for the Playview-facing Studio endpoints.
 
 ## Remaining coupling allowed by design
 

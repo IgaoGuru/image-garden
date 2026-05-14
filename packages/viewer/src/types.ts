@@ -56,6 +56,8 @@ export interface IndexStatus {
   indexedAssets?: number;
   message?: string;
   updatedAt?: string;
+  studioApiVersion?: string;
+  studioVersion?: string;
 }
 
 export interface NearbyQuery {

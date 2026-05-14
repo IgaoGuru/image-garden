@@ -16,7 +16,7 @@ cd "$ROOT"
 printf 'Building web assets…\n'
 pnpm install --frozen-lockfile
 pnpm --filter @image-garden/viewer build
-pnpm --filter @constellation/playview build
+pnpm --filter @image-garden/playview build
 
 printf 'ONNX model is not bundled; installer downloads it to app data on first run.\n'
 
