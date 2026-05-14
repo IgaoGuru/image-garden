@@ -19,7 +19,6 @@
     "studio:app": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run --extra onnx image-garden-app",
     "studio:clear": "node scripts/clear-app-data.mjs",
     "studio:test": "if [ -f ./.env ]; then set -a; . ./.env; set +a; fi; unset VIRTUAL_ENV; uv --project studio run pytest",
-    "desktop:dev": "pnpm --filter @constellation/desktop dev",
     "release:bundle": "bash scripts/build-release.sh",
     "release:tag": "bash release-tag",
     "installer:reset": "bash scripts/dev-reset-install-state.sh",
@@ -34,7 +33,6 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron",
       "esbuild"
     ]
   }

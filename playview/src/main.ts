@@ -15,11 +15,6 @@ interface ApiStatus {
   [key: string]: unknown;
 }
 
-interface DesktopBridge {
-  openImportFolder?: () => Promise<ImportResult | undefined>;
-  openImportStudio?: () => Promise<ImportResult | undefined>;
-}
-
 interface PlayviewDebugSnapshot {
   status: ApiStatus | null;
   viewer: ReturnType<ImageGardenViewer['getDebugStats']> | null;
@@ -31,12 +26,6 @@ interface PlayviewDebugSnapshot {
     fileRequests: number;
   };
   pointerLock: boolean;
-}
-
-interface ImportResult {
-  ok?: boolean;
-  canceled?: boolean;
-  error?: string;
 }
 
 interface AssetPage {
@@ -63,7 +52,6 @@ interface LayoutTuning {
 
 declare global {
   interface Window {
-    constellationDesktop?: DesktopBridge;
     imageGardenDebug?: () => PlayviewDebugSnapshot;
   }
 }
@@ -107,7 +95,6 @@ const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
 const windVolumeInput = mustQuery<HTMLInputElement>('#wind-volume');
 const windVolumeValue = mustQuery<HTMLOutputElement>('#wind-volume-value');
 const windStatus = mustQuery<HTMLElement>('#wind-status');
-const desktop = window.constellationDesktop;
 
 let viewerInstance: ImageGardenViewer | null = null;
 let latestStatus: ApiStatus | null = null;
@@ -527,23 +514,11 @@ function onboardingMarkup(): string {
 async function handleDrop(event: DragEvent): Promise<void> {
   event.preventDefault();
   (event.currentTarget as HTMLElement | null)?.classList.remove('dragging');
-  const path = [...(event.dataTransfer?.files ?? [])]
-    .map((file) => (file as File & { path?: string }).path)
-    .find((value): value is string => typeof value === 'string' && value.length > 0);
-  if (path) {
-    await startFolderImport(path);
-    return;
-  }
-  status.textContent = 'directory path unavailable; opening picker';
+  status.textContent = 'dropped browser files cannot expose local folder paths; opening picker';
   await chooseFolder();
 }
 
 async function chooseFolder(): Promise<void> {
-  const openImportFolder = desktop?.openImportFolder;
-  if (openImportFolder) {
-    await runDesktopImport(openImportFolder, 'importing directory');
-    return;
-  }
   const path = await chooseBackendPath('/api/dialog/folder', 'choose a directory');
   if (path) {
     await startFolderImport(path);
@@ -553,11 +528,6 @@ async function chooseFolder(): Promise<void> {
 }
 
 async function chooseStudioDataset(): Promise<void> {
-  const openImportStudio = desktop?.openImportStudio;
-  if (openImportStudio) {
-    await runDesktopImport(openImportStudio, 'importing dataset');
-    return;
-  }
   const path = await chooseBackendPath('/api/dialog/studio', 'choose a dataset');
   if (path) {
     await submitImportPath('/api/import/studio', path, 'opening dataset');
@@ -582,19 +552,6 @@ async function chooseBackendPath(endpoint: string, message: string): Promise<str
   } catch (error) {
     status.textContent = `picker failed: ${errorMessage(error)}`;
     return null;
-  }
-}
-
-async function runDesktopImport(importer: () => Promise<ImportResult | undefined>, message: string): Promise<void> {
-  showProgress({ jobPhase: message, jobCompleted: 0, jobTotal: 0 });
-  try {
-    const result = await importer();
-    if (result?.ok) window.location.reload();
-    else if (!result?.canceled) status.textContent = result?.error ?? 'import canceled';
-  } catch (error) {
-    status.textContent = `import failed: ${errorMessage(error)}`;
-  } finally {
-    hideProgress();
   }
 }
 

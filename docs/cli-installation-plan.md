@@ -2,7 +2,7 @@
 
 ## Top-level goal
 
-Stop trying to feel like a desktop `.app` for now. Make Constellation a first-class CLI-managed local app that installs cleanly, can always be started/stopped/reopened, updates safely, explains failures, and leaves the user with one obvious command:
+Make Image Garden a first-class CLI-managed local web app that installs cleanly, can always be started/stopped/reopened, updates safely, explains failures, and leaves the user with one obvious command:
 
 ```bash
 constellation start

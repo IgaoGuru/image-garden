@@ -1,4 +1,4 @@
-"""Local backend API for Constellation desktop/runtime clients."""
+"""Local backend API for Image Garden web/runtime clients."""
 
 from __future__ import annotations
 
