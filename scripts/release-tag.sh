@@ -6,7 +6,7 @@ usage() {
 Create, tag, push, and publish an Image Garden GitHub release.
 
 Usage:
-  ./release-tag 0.2.1 [--dry-run] [--skip-tests]
+  ./scripts/release-tag.sh 0.2.1 [--dry-run] [--skip-tests]
 
 What it does:
   1. verifies git state and release tools

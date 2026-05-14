@@ -35,7 +35,7 @@ rsync -a \
 rsync -a packages/viewer/dist/ "$STAGE/viewer-dist/"
 rsync -a packages/playview/dist/ "$STAGE/playview-dist/"
 cp scripts/install.sh scripts/install.ps1 scripts/install_tui.py "$STAGE/scripts/"
-cp README.md spec.md package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
+cp README.md docs/spec.md package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE/"
 printf '%s\n' "$VERSION" > "$STAGE/VERSION"
 
 cat > "$STAGE/image-garden" <<'SH'

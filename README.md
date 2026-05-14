@@ -78,7 +78,7 @@ checksums, bootstrap installers, and `dist-release/release-manifest.json`.
 To publish an official GitHub release after committing/merging:
 
 ```bash
-./release-tag 0.2.1
+./scripts/release-tag.sh 0.2.1
 ```
 
 That validates, builds `dist-release/` as `v0.2.1`, creates/pushes the git tag,
