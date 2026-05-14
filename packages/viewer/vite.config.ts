@@ -15,11 +15,11 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'ConstellationViewer',
-      fileName: 'constellation-viewer',
+      name: 'ImageGardenViewer',
+      fileName: 'image-garden-viewer',
       formats: ['es', 'umd'],
     },
-    // Bundle runtime dependencies so Studio can serve `/viewer/constellation-viewer.js`
+    // Bundle runtime dependencies so Studio can serve `/viewer/image-garden-viewer.js`
     // directly in a plain browser without a bundler/import-map. The package still
     // exposes normal ESM/UMD library entry points for npm consumers.
     sourcemap: true,

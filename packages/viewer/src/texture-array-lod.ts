@@ -126,7 +126,7 @@ export class TextureArrayLodManager {
     minCardScreenHeightPx: number;
     frustumCullCards: boolean;
     frustumCullMargin: number;
-    textureArrayIndexUrl: string;
+    textureArrayIndexUrl: string | null;
     textureArrayPageConcurrency: number;
     textureArrayMaxPages: number;
   };
@@ -176,7 +176,7 @@ export class TextureArrayLodManager {
       minCardScreenHeightPx: options.minCardScreenHeightPx ?? 0,
       frustumCullCards: options.frustumCullCards ?? true,
       frustumCullMargin: options.frustumCullMargin ?? 0.1,
-      textureArrayIndexUrl: options.textureArrayIndexUrl ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
+      textureArrayIndexUrl: options.textureArrayIndexUrl ?? null,
       textureArrayPageConcurrency: options.textureArrayPageConcurrency ?? 4,
       textureArrayMaxPages: options.textureArrayMaxPages ?? 16,
     };
@@ -187,7 +187,7 @@ export class TextureArrayLodManager {
     this.group.add(this.cardGroup);
     this.scene.add(this.group);
     this.setImages(images);
-    this.loadTextureArrayIndex();
+    if (this.options.textureArrayIndexUrl) void this.loadTextureArrayIndex();
 
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onClick = this.onClick.bind(this);
@@ -288,6 +288,7 @@ export class TextureArrayLodManager {
 
   private async loadTextureArrayIndex(): Promise<void> {
     try {
+      if (!this.options.textureArrayIndexUrl) return;
       const response = await fetch(this.options.textureArrayIndexUrl);
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       const loaded = await response.json() as TextureArrayIndex;

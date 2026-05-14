@@ -127,6 +127,55 @@ test('near sprites shrink to stay below maximum viewport height', async ({ page 
   expect(consoleErrors).toEqual([]);
 });
 
+test('fetch data source supports explicit backend endpoint adapters', async ({ page }) => {
+  await page.goto('/tests/fixture.html');
+  const result = await page.evaluate(async () => {
+    const { createFetchDataSource } = await import('/src/index.ts');
+    const requests: string[] = [];
+    const source = createFetchDataSource({
+      baseUrl: 'https://example.test/root/',
+      initialLimit: 2,
+      initialOffset: 4,
+      endpoints: {
+        status: 'status.json',
+        assets: 'assets.json',
+        nearAssets: 'near-assets.json',
+        asset: (id: string) => `asset/${encodeURIComponent(id)}.json`,
+      },
+      fetch: async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.includes('status.json')) {
+          return new Response(JSON.stringify({ state: 'ready', totalAssets: 1 }), { status: 200 });
+        }
+        if (url.includes('near-assets.json')) {
+          return new Response(JSON.stringify({ assets: [] }), { status: 200 });
+        }
+        if (url.includes('asset/')) {
+          return new Response(JSON.stringify({ id: 'one', thumbnailUrl: '/thumb.jpg', position: [1, 2, 3] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ assets: [{ id: 'one', thumbnailUrl: '/thumb.jpg', position: [1, 2, 3] }] }), { status: 200 });
+      },
+    });
+    const status = await source.getStatus();
+    const assets = await source.getInitialAssets();
+    const near = await source.getNearbyAssets?.({ x: 1, y: 2, z: 3, radius: 4, limit: 5 });
+    const asset = await source.getAsset?.('one/two');
+    return { requests, status, assets, near, asset };
+  });
+
+  expect(result.status.state).toBe('ready');
+  expect(result.assets).toHaveLength(1);
+  expect(result.near).toEqual([]);
+  expect(result.asset?.id).toBe('one');
+  expect(result.requests).toEqual([
+    'https://example.test/root/status.json',
+    'https://example.test/root/assets.json?limit=2&offset=4',
+    'https://example.test/root/near-assets.json?x=1&y=2&z=3&radius=4&limit=5',
+    'https://example.test/root/asset/one%2Ftwo.json',
+  ]);
+});
+
 test('layout duplicate jitter deterministically splits same-coordinate stacks', async ({ page }) => {
   await page.goto('/tests/fixture.html');
   const result = await page.evaluate(async () => {

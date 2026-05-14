@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  viewer:
+    name: Viewer package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @image-garden/viewer typecheck
+      - run: rm -rf packages/viewer/dist && pnpm --filter @image-garden/viewer test
+      - run: rm -rf packages/viewer/dist && pnpm --filter @image-garden/viewer build
+
+  playview:
+    name: Playview shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @image-garden/playview typecheck
+      - run: rm -rf packages/viewer/dist packages/playview/dist && pnpm build
+
+  studio:
+    name: Studio package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv --project packages/studio sync --extra onnx --dev
+      - run: uv --project packages/studio run ruff check .
+      - run: uv --project packages/studio run python -m pytest -q packages/studio/tests

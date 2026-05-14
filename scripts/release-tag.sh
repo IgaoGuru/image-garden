@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Create, tag, push, and publish an Image Garden GitHub release.
+
+Usage:
+  ./scripts/release-tag.sh 0.2.1 [--dry-run] [--skip-tests]
+
+What it does:
+  1. verifies git state and release tools
+  2. runs validation unless --skip-tests
+  3. builds dist-release/ with IMAGE_GARDEN_VERSION=vX.Y.Z
+  4. creates annotated git tag vX.Y.Z
+  5. pushes current branch and tag
+  6. creates GitHub release and uploads dist-release assets
+
+Requires:
+  gh authenticated with repo write access
+EOF
+}
+
+VERSION=""
+DRY_RUN=0
+SKIP_TESTS=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --skip-tests)
+      SKIP_TESTS=1
+      shift
+      ;;
+    --*)
+      printf 'error: unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [ -n "$VERSION" ]; then
+        printf 'error: version already provided: %s\n' "$VERSION" >&2
+        usage >&2
+        exit 1
+      fi
+      VERSION="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$VERSION" ]; then
+  printf 'error: version required\n' >&2
+  usage >&2
+  exit 1
+fi
+
+case "$VERSION" in
+  v*) TAG="$VERSION" ;;
+  *) TAG="v$VERSION" ;;
+esac
+
+if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+  printf 'error: invalid semver tag: %s\n' "$TAG" >&2
+  exit 1
+fi
+
+run() {
+  printf '\n→ %s\n' "$*"
+  if [ "$DRY_RUN" -eq 0 ]; then
+    "$@"
+  fi
+}
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  printf 'error: not inside a git worktree\n' >&2
+  exit 1
+fi
+
+BRANCH="$(git symbolic-ref --short HEAD)"
+REMOTE="${IMAGE_GARDEN_RELEASE_REMOTE:-${CONSTELLATION_RELEASE_REMOTE:-origin}}"
+OUT_DIR="${IMAGE_GARDEN_RELEASE_DIR:-${CONSTELLATION_RELEASE_DIR:-$ROOT/dist-release}}"
+
+if [ -n "$(git status --porcelain)" ]; then
+  printf 'error: working tree is dirty. Commit or stash changes first.\n' >&2
+  git status --short >&2
+  exit 1
+fi
+
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+  printf 'error: tag already exists locally: %s\n' "$TAG" >&2
+  exit 1
+fi
+
+if git ls-remote --exit-code --tags "$REMOTE" "refs/tags/$TAG" >/dev/null 2>&1; then
+  printf 'error: tag already exists on %s: %s\n' "$REMOTE" "$TAG" >&2
+  exit 1
+fi
+
+for command in pnpm uv git gh; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    printf 'error: missing required command: %s\n' "$command" >&2
+    exit 1
+  fi
+done
+
+gh auth status >/dev/null
+
+if gh release view "$TAG" >/dev/null 2>&1; then
+  printf 'error: GitHub release already exists: %s\n' "$TAG" >&2
+  exit 1
+fi
+
+if [ "$SKIP_TESTS" -eq 0 ]; then
+  run uv --directory packages/studio run ruff check src tests
+  run uv --directory packages/studio run basedpyright
+  run uv --directory packages/studio run python -m pytest
+  run pnpm typecheck
+fi
+
+run rm -rf "$OUT_DIR"
+run env IMAGE_GARDEN_VERSION="$TAG" pnpm release:bundle
+
+ASSETS=(
+  "$OUT_DIR/install.sh"
+  "$OUT_DIR/install.ps1"
+  "$OUT_DIR/image-garden-macos-arm64.tar.gz"
+  "$OUT_DIR/image-garden-macos-arm64.tar.gz.sha256"
+  "$OUT_DIR/release-manifest.json"
+)
+
+if [ -f "$OUT_DIR/image-garden-windows-x64.zip" ]; then
+  ASSETS+=(
+    "$OUT_DIR/image-garden-windows-x64.zip"
+    "$OUT_DIR/image-garden-windows-x64.zip.sha256"
+  )
+fi
+
+for asset in "${ASSETS[@]}"; do
+  if [ ! -f "$asset" ]; then
+    printf 'error: expected release asset missing: %s\n' "$asset" >&2
+    exit 1
+  fi
+done
+
+run git tag -a "$TAG" -m "Release $TAG"
+run git push "$REMOTE" "$BRANCH"
+run git push "$REMOTE" "$TAG"
+run gh release create "$TAG" "${ASSETS[@]}" \
+  --title "$TAG" \
+  --notes "Release $TAG"
+
+printf '\nRelease complete: %s\n' "$TAG"
+printf 'Assets uploaded from: %s\n' "$OUT_DIR"

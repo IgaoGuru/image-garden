@@ -113,7 +113,7 @@ export class AtlasLodManager {
     selectedColor: number;
     textureUnloadDistance: number;
     pointColor: number;
-    atlasIndexUrl: string;
+    atlasIndexUrl: string | null;
     atlasPageConcurrency: number;
     atlasMaxPages: number;
   };
@@ -157,8 +157,8 @@ export class AtlasLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
-      atlas: options.atlas ?? true,
-      atlasIndexUrl: options.atlasIndexUrl ?? '/api/atlas/index.json',
+      atlas: options.atlas ?? false,
+      atlasIndexUrl: options.atlasIndexUrl ?? null,
       atlasPageConcurrency: options.atlasPageConcurrency ?? 4,
       atlasMaxPages: options.atlasMaxPages ?? 16,
     };
@@ -169,7 +169,7 @@ export class AtlasLodManager {
     this.group.add(this.cardGroup);
     this.scene.add(this.group);
     this.setImages(images);
-    this.loadAtlasIndex();
+    if (this.options.atlasIndexUrl) void this.loadAtlasIndex();
 
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onClick = this.onClick.bind(this);
@@ -270,6 +270,7 @@ export class AtlasLodManager {
 
   private async loadAtlasIndex(): Promise<void> {
     try {
+      if (!this.options.atlasIndexUrl) return;
       const response = await fetch(this.options.atlasIndexUrl);
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       const loaded = await response.json() as AtlasIndex;

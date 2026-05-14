@@ -1,0 +1,112 @@
+[project]
+name = "image-garden-studio"
+version = "0.1.0"
+description = "Local Image Garden CLI/backend for importing images, generating embeddings, and serving runtime assets."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "GPL-3.0-only"
+keywords = ["image-garden", "embeddings", "onnx", "clip", "umap", "photos"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "numpy>=2.0",
+    "pillow>=11.0",
+    "pillow-heif>=1.1.1",
+    "umap-learn>=0.5.7",
+]
+
+[project.optional-dependencies]
+openclip = [
+    "open-clip-torch>=3.0.0",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+]
+onnx = [
+    "onnxruntime>=1.20.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/IgaoGuru/image-garden"
+Repository = "https://github.com/IgaoGuru/image-garden"
+Issues = "https://github.com/IgaoGuru/image-garden/issues"
+
+[project.scripts]
+image-garden = "constellation_studio.cli:main"
+image-garden-studio = "constellation_studio.cli:main"
+image-garden-app = "constellation_studio.app:main"
+image-garden-backend = "constellation_studio.backend:main"
+image-garden-embed = "constellation_studio.embed:main"
+image-garden-download-onnx = "constellation_studio.download_onnx:main"
+image-garden-serve = "constellation_studio.server:main"
+constellation = "constellation_studio.cli:main"
+constellation-app = "constellation_studio.app:main"
+constellation-backend = "constellation_studio.backend:main"
+constellation-embed = "constellation_studio.embed:main"
+constellation-download-onnx = "constellation_studio.download_onnx:main"
+constellation-serve = "constellation_studio.server:main"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.31.4",
+    "pytest>=8.3.0",
+    "ruff>=0.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/constellation_studio"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/constellation_studio", "tests", "README.md", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 79
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # formatter owns trailing commas
+    "D100",  # small internal tool, docstrings not useful everywhere
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D107",
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+    "E501",  # embedded HTML has long lines
+    "EM101",
+    "EXE001", # wrappers can still be run as python packages/studio/embed.py
+    "PLC0415", # lazy ML imports keep non-ML commands fast
+    "PLR2004",
+    "PT017",
+    "S101",  # pytest assert
+    "T201",  # CLI output uses print intentionally
+    "TC003", # pathlib/collections imports are harmless at runtime
+    "TRY003",
+    "TRY004",
+    "TRY300",
+]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
+include = ["src", "tests", "embed.py", "serve.py"]
+exclude = [
+    "src/constellation_studio/open_clip_backend.py",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
