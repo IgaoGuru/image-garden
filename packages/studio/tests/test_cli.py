@@ -22,7 +22,9 @@ def test_pyproject_exposes_image_garden_studio_entry_points() -> None:
     assert scripts["image-garden"] == "constellation_studio.cli:main"
     assert scripts["image-garden-studio"] == "constellation_studio.cli:main"
     assert scripts["image-garden-app"] == "constellation_studio.app:main"
-    assert scripts["image-garden-backend"] == "constellation_studio.backend:main"
+    assert (
+        scripts["image-garden-backend"] == "constellation_studio.backend:main"
+    )
     assert scripts["image-garden-download-onnx"] == (
         "constellation_studio.download_onnx:main"
     )
@@ -50,6 +52,19 @@ def test_read_write_running_state_clears_stale_pid(tmp_path: Path) -> None:
     assert cli.running_state(paths) is None
     assert not paths.state_file.exists()
     assert not paths.pid_file.exists()
+
+
+def test_resolve_paths_uses_default_mobileclip_model_path(
+    tmp_path: Path,
+) -> None:
+    paths = cli.resolve_paths(
+        install_root=tmp_path / "app", data_dir=tmp_path / "data"
+    )
+
+    assert (
+        paths.model_path
+        == tmp_path / "data" / "models" / "mobileclip-s1-vision.onnx"
+    )
 
 
 def test_write_cli_shim_points_at_install_root(

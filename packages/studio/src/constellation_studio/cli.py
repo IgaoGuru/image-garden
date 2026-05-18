@@ -25,6 +25,7 @@ from typing import BinaryIO, Literal, cast
 from constellation_studio import app as app_launcher
 from constellation_studio.app import default_app_data_dir
 from constellation_studio.download_onnx import (
+    DEFAULT_ONNX_OUTPUT,
     DEFAULT_ONNX_SHA256,
     download_onnx_model,
     sha256_file,
@@ -32,7 +33,7 @@ from constellation_studio.download_onnx import (
 
 APP_NAME = "Image Garden"
 DEFAULT_HOST = "127.0.0.1"
-MODEL_RELATIVE_PATH = Path("models") / "clip-image-encoder.onnx"
+MODEL_RELATIVE_PATH = DEFAULT_ONNX_OUTPUT
 RUNTIME_DIR_NAME = "runtime"
 STATE_FILE_NAME = "server.json"
 PID_FILE_NAME = "server.pid"
