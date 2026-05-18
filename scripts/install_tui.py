@@ -142,7 +142,9 @@ def header(title: str) -> None:
     clear_screen()
     print(style("✦ Image Garden", Ansi.bold, Ansi.cyan))
     print(style(title, Ansi.bold))
-    print(style("Private photo map. Local-first. No cloud account.\n", Ansi.dim))
+    print(
+        style("Private photo map. Local-first. No cloud account.\n", Ansi.dim)
+    )
 
 
 def prompt(default: str = "") -> str:
@@ -188,7 +190,9 @@ def read_posix_key() -> str:
     if first == "\x1b":
         rest = sys.stdin.read(2)
         return {"[A": "up", "[B": "down"}.get(rest, "escape")
-    return {"\x03": "ctrl-c", "\r": "enter", "\n": "enter"}.get(first, first.lower())
+    return {"\x03": "ctrl-c", "\r": "enter", "\n": "enter"}.get(
+        first, first.lower()
+    )
 
 
 def read_key() -> str:
@@ -228,10 +232,18 @@ def select_index(
             for index, option in enumerate(options):
                 active = index == cursor
                 marker = style("❯", Ansi.cyan) if active else " "  # noqa: RUF001
-                radio = style("●", Ansi.green) if active else style("○", Ansi.dim)
-                label = style(option.label, Ansi.bold) if active else option.label
-                hint = f" {style(option.hint, Ansi.dim)}" if option.hint else ""
-                lines.append(f"{style('│', Ansi.dim)} {marker} {radio} {label}{hint}")
+                radio = (
+                    style("●", Ansi.green) if active else style("○", Ansi.dim)
+                )
+                label = (
+                    style(option.label, Ansi.bold) if active else option.label
+                )
+                hint = (
+                    f" {style(option.hint, Ansi.dim)}" if option.hint else ""
+                )
+                lines.append(
+                    f"{style('│', Ansi.dim)} {marker} {radio} {label}{hint}"
+                )
             lines.append(style("└", Ansi.dim))
             print("\n".join(lines))
             rendered = len(lines)
@@ -249,7 +261,9 @@ def select_index(
             elif key in {"q", "escape", "ctrl-c"}:
                 clear_lines(rendered)
                 print(f"{style('■', Ansi.red)}  {style(message, Ansi.bold)}")
-                print(f"{style('│', Ansi.dim)}  {style('Cancelled', Ansi.dim)}")
+                print(
+                    f"{style('│', Ansi.dim)}  {style('Cancelled', Ansi.dim)}"
+                )
                 print(style("└", Ansi.dim))
                 return None
 
@@ -330,22 +344,33 @@ def default_app_data_dir() -> Path:
     if env_data:
         return Path(env_data).expanduser()
     if os.name == "nt":
-        root = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        root = os.environ.get("LOCALAPPDATA") or str(
+            Path.home() / "AppData" / "Local"
+        )
         return Path(root) / APP_NAME
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME
-    root = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    root = os.environ.get("XDG_DATA_HOME") or str(
+        Path.home() / ".local" / "share"
+    )
     return Path(root) / "image-garden"
 
 
 def app_paths(app_dir: Path) -> AppPaths:
-    """Build path set."""
-    resolved = app_dir.expanduser()
+    """Build path set.
+
+    Keep app_dir as the stable install path (usually ~/.image-garden/current),
+    but resolve project/assets paths through the current symlink target. uv can
+    retain stale environment state when --project points at a symlink that moved
+    between releases, so all uv project operations use the real release path.
+    """
+    expanded = app_dir.expanduser()
+    stable = expanded if expanded.is_absolute() else Path.cwd() / expanded
     return AppPaths(
-        app_dir=resolved,
-        studio_dir=resolved / STUDIO_DIR,
-        viewer_dist=resolved / VIEWER_DIST,
-        playview_dist=resolved / PLAYVIEW_DIST,
+        app_dir=stable,
+        studio_dir=(stable / STUDIO_DIR).resolve(),
+        viewer_dist=(stable / VIEWER_DIST).resolve(),
+        playview_dist=(stable / PLAYVIEW_DIST).resolve(),
         model_path=default_app_data_dir() / MODEL_RELATIVE_PATH,
     )
 
@@ -426,7 +451,9 @@ def choose_action(paths: AppPaths) -> InstallOptions:
     selected = select_index(
         "Choose install path",
         [
-            SelectOption("Recommended install / update", "installs CLI; launch later"),
+            SelectOption(
+                "Recommended install / update", "installs CLI; launch later"
+            ),
             SelectOption("Install and launch now", "start app after setup"),
             SelectOption("Advanced options", "choose model/download behavior"),
             SelectOption("Repair install", "recreate Python environment"),
@@ -533,7 +560,9 @@ def sync_python_environment(
     return code == 0
 
 
-def ensure_model(paths: AppPaths, uv_path: str, *, install_model: bool) -> bool:
+def ensure_model(
+    paths: AppPaths, uv_path: str, *, install_model: bool
+) -> bool:
     """Ensure ONNX model exists, downloading when requested."""
     if not onnx_runtime_supported():
         print(
@@ -611,7 +640,9 @@ def write_launcher(
         bin_dir = default_windows_bin_dir()
         bin_dir.mkdir(parents=True, exist_ok=True)
         shim = bin_dir / "image-garden.cmd"
-        shim.write_text(app_launcher.read_text(encoding="utf-8"), encoding="utf-8")
+        shim.write_text(
+            app_launcher.read_text(encoding="utf-8"), encoding="utf-8"
+        )
         return
     app_launcher = paths.app_dir / "image-garden"
     launcher_text = (
@@ -650,9 +681,15 @@ def quote_ps(value: str) -> str:
 def uninstall(paths: AppPaths) -> int:
     """Remove app files after confirmation."""
     header("Uninstall")
-    target = paths.app_dir.parent if paths.app_dir.name == "current" else paths.app_dir
+    target = (
+        paths.app_dir.parent
+        if paths.app_dir.name == "current"
+        else paths.app_dir
+    )
     print(f"This removes app files in:\n  {target}\n")
-    print("Photo library untouched. App data/cache may remain in system app data.")
+    print(
+        "Photo library untouched. App data/cache may remain in system app data."
+    )
     if not prompt_yes_no("Continue?", default=False):
         pause_before_exit()
         return 0
@@ -712,9 +749,9 @@ def install(paths: AppPaths, options: InstallOptions) -> int:
     print()
     print("Logs:")
     print("  image-garden logs")
-    if os.name != "nt" and str(Path.home() / ".local" / "bin") not in os.environ.get(
-        "PATH", ""
-    ):
+    if os.name != "nt" and str(
+        Path.home() / ".local" / "bin"
+    ) not in os.environ.get("PATH", ""):
         print()
         print(
             style(
@@ -724,7 +761,9 @@ def install(paths: AppPaths, options: InstallOptions) -> int:
         )
         direct = Path.home() / ".local" / "bin" / "image-garden"
         print(f"You can run directly: {direct} start")
-        print("Background mode is also available: image-garden start --background")
+        print(
+            "Background mode is also available: image-garden start --background"
+        )
     pause_before_exit()
     return 0
 

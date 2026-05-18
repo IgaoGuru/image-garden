@@ -698,7 +698,7 @@ def write_cli_shim(paths: Paths) -> None:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f"export IMAGE_GARDEN_INSTALL_DIR={sh_quote(str(paths.install_root))}\n"
-        f'exec uv --project {sh_quote(str(paths.studio_dir))} run --no-dev image-garden "$@"\n',
+        f'exec uv --project {sh_quote(str(paths.studio_dir.resolve()))} run --no-dev image-garden "$@"\n',
         encoding="utf-8",
     )
     paths.posix_shim.chmod(0o755)
