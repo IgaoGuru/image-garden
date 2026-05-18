@@ -44,24 +44,36 @@
         <ol class="log" aria-label="embedding log"></ol>
       </section>
 
+      <section class="what-it-does" aria-labelledby="what-it-does-title">
+        <h2 id="what-it-does-title">what it does</h2>
+        <ul>
+          <li>Builds a local embedding map of your images.</li>
+          <li>Projects image embeddings into a navigable 3D world.</li>
+          <li>Generates thumbnails and caches embeddings locally.</li>
+          <li>Uses WebGL instancing, texture pages, culling, and LOD so large maps stay usable.</li>
+          <li>Opens as a local web app; no desktop app shell is required.</li>
+        </ul>
+        <p>Images stay on your computer. No cloud photo upload is required.</p>
+      </section>
+
       <details class="nerds">
         <summary>for rendering / ML nerds</summary>
         <div class="nerd-notes">
           <p>
-            The viewer uses WebGL instancing, texture pages, frustum culling, screen-size LOD,
-            world scaling, and deterministic jitter to keep large photo maps navigable.
+            The default encoder is MobileCLIP-S1 running through ONNX Runtime, with OpenCLIP/PyTorch paths
+            kept around for experiments and model comparisons.
           </p>
           <p>
-            The map is built from image embeddings, projected into 3D with UMAP, then tuned so dense clusters
-            remain readable without losing the feeling of an embedding space.
+            Runtime data is split from rendering: Studio owns local indexing, asset normalization, SQLite state,
+            and API routes; Viewer consumes positioned runtime assets and stays reusable.
           </p>
           <p>
-            Embeddings run locally with ONNX by default. Image Garden currently defaults to MobileCLIP-S1,
-            with OpenCLIP/PyTorch-style paths kept for experimentation.
+            Large maps use a point-cloud baseline and promote nearby images into textured cards. Atlas and
+            texture-array pages keep GPU uploads bounded while the camera moves.
           </p>
           <p>
-            The runtime is intentionally boring: a local backend, generated thumbnails, cached embeddings,
-            and a browser viewer. No cloud photo upload is required.
+            Layout is deterministic: embeddings are reduced into 3D, centered, scaled, and lightly separated so
+            dense clusters stay explorable without changing the underlying neighborhood structure too much.
           </p>
         </div>
       </details>

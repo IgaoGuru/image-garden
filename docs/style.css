@@ -15,7 +15,7 @@ a { color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--line
 a:hover, a:focus-visible { border-bottom-color: var(--fg); outline: none; }
 
 .page {
-  width: min(760px, calc(100vw - 40px));
+  width: min(700px, calc(100vw - 40px));
   min-height: 100vh;
   margin: 0 auto;
   padding: clamp(48px, 9vh, 96px) 0 40px;
@@ -73,7 +73,10 @@ h1 { margin: 0; font-size: clamp(42px, 8vw, 86px); line-height: .92; font-weight
 .log { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; color: rgba(214, 235, 206, 0.42); font-size: 11px; }
 .log li:first-child { color: rgba(214, 235, 206, 0.78); }
 
-.install, .notes { display: grid; gap: 10px; }
+.install, .notes, .what-it-does { display: grid; gap: 10px; }
+.what-it-does ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.what-it-does li + li { margin-top: 4px; }
+.what-it-does p { margin: 0; color: rgba(214, 235, 206, 0.82); }
 .install-grid { display: grid; gap: 12px; }
 .install-grid section { display: grid; gap: 6px; }
 h2, h3 { margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; }
@@ -87,6 +90,6 @@ code { display: block; width: fit-content; max-width: 100%; padding: 12px 14px; 
 .footer { display: flex; gap: 10px; color: var(--muted); font-size: 12px; }
 
 @media (max-width: 560px) {
-  .page { width: min(100% - 28px, 760px); padding-top: 34px; align-content: start; }
+  .page { width: min(100% - 28px, 700px); padding-top: 34px; align-content: start; }
   .status-topline { display: grid; gap: 4px; }
 }
