@@ -410,10 +410,17 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         if asset_dir_obj is not None and not isinstance(asset_dir_obj, str):
             msg = "assetDir must be a string when provided"
             raise ValueError(msg)
+        recompute_layout_obj = payload.get("recomputeLayout", False)
+        if not isinstance(recompute_layout_obj, bool):
+            msg = "recomputeLayout must be a boolean when provided"
+            raise ValueError(msg)
         result = import_studio_dataset(
             Path(path_obj),
             store=self.store,
             asset_dir=Path(asset_dir_obj) if asset_dir_obj else None,
+            embedding_provider=self.embedding_provider,
+            batch_size=self.embedding_batch_size,
+            recompute_layout=recompute_layout_obj,
         )
         self._send_json(
             {
@@ -521,9 +528,16 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         )
         self._send_json(index, send_body=send_body)
 
-    def _get_texture_array_page(self, raw_page: str, *, send_body: bool) -> None:
+    def _get_texture_array_page(
+        self, raw_page: str, *, send_body: bool
+    ) -> None:
         path = resolve_below(texture_array_root(self.asset_root), raw_page)
-        if path is None or path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+        if path is None or path.suffix.lower() not in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+        }:
             self.send_error(HTTPStatus.NOT_FOUND, "not found")
             return
         self._send_path_or_404(path, send_body=send_body)
@@ -682,7 +696,22 @@ def generated_asset_path(
     return asset_root / directory / f"{asset_id}.jpg"
 
 
-def atlas_dir(asset_root: Path, *, thumb_size: int = 128, page_size: int = 4096) -> Path:
+def thumbnail_source_path(
+    store: IndexStore, asset_root: Path, asset_id: str
+) -> Path | None:
+    """Return a thumbnail source path for folder and BYO dataset assets."""
+    generated = generated_asset_path(asset_root, asset_id, thumbnail=True)
+    if generated is not None and generated.is_file():
+        return generated
+    stored = store.asset_thumbnail_path(asset_id)
+    if stored is not None and stored.is_file():
+        return stored
+    return None
+
+
+def atlas_dir(
+    asset_root: Path, *, thumb_size: int = 128, page_size: int = 4096
+) -> Path:
     """Return thumbnail atlas cache directory."""
     return asset_root / "atlas" / f"thumb{thumb_size}-page{page_size}"
 
@@ -695,8 +724,31 @@ def atlas_page_path(
     page_size: int = 4096,
 ) -> Path:
     """Return one thumbnail atlas page path."""
-    return atlas_dir(asset_root, thumb_size=thumb_size, page_size=page_size) / (
-        f"page-{page_index}.jpg"
+    return atlas_dir(
+        asset_root, thumb_size=thumb_size, page_size=page_size
+    ) / (f"page-{page_index}.jpg")
+
+
+def cache_signature_path(directory: Path) -> Path:
+    """Return the cache signature sidecar path for generated pages."""
+    return directory / ".source-signature"
+
+
+def cache_needs_regeneration(directory: Path, signature: str) -> bool:
+    """Return whether generated pages are stale for the current asset set."""
+    try:
+        return (
+            cache_signature_path(directory).read_text(encoding="utf-8").strip()
+            != signature
+        )
+    except FileNotFoundError:
+        return True
+
+
+def write_cache_signature(directory: Path, signature: str) -> None:
+    """Persist the source signature after generated pages are fresh."""
+    cache_signature_path(directory).write_text(
+        signature + "\n", encoding="utf-8"
     )
 
 
@@ -721,6 +773,8 @@ def build_thumbnail_atlas_index(
         page_size=page_size,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
+    cache_signature = store.asset_cache_signature()
+    regenerate_pages = cache_needs_regeneration(output_dir, cache_signature)
 
     entries: list[dict[str, object]] = []
     pages: list[dict[str, object]] = []
@@ -734,10 +788,11 @@ def build_thumbnail_atlas_index(
             thumb_size=thumb_size,
             page_size=page_size,
         )
-        if not page_path.is_file():
+        if regenerate_pages or not page_path.is_file():
             write_thumbnail_atlas_page(
                 page_path,
                 page_assets,
+                store=store,
                 asset_root=asset_root,
                 thumb_size=thumb_size,
                 page_size=page_size,
@@ -771,6 +826,7 @@ def build_thumbnail_atlas_index(
                     "v1": v1,
                 }
             )
+    write_cache_signature(output_dir, cache_signature)
     return {
         "thumbSize": thumb_size,
         "pageSize": page_size,
@@ -793,8 +849,8 @@ def atlas_uv_rect(
     page_size: int,
 ) -> tuple[float, float, float, float]:
     """Return tight UV rect around the actual thumbnail inside an atlas cell."""
-    width = max(1, int(asset.get("width", thumb_size) or thumb_size))
-    height = max(1, int(asset.get("height", thumb_size) or thumb_size))
+    width = positive_int_field(asset, "width", fallback=thumb_size)
+    height = positive_int_field(asset, "height", fallback=thumb_size)
     if width >= height:
         rendered_width = thumb_size
         rendered_height = max(1, round(thumb_size * height / width))
@@ -812,16 +868,45 @@ def atlas_uv_rect(
     )
 
 
+def positive_int_field(
+    asset: Mapping[str, object], key: str, *, fallback: int
+) -> int:
+    """Return a positive int field from a loosely typed runtime asset."""
+    value = asset.get(key)
+    if isinstance(value, int | float | str):
+        try:
+            return max(1, int(value))
+        except (OverflowError, ValueError):
+            return max(1, fallback)
+    return max(1, fallback)
+
+
 def atlas_sort_key(asset: Mapping[str, object]) -> tuple[int, str]:
     """Sort assets spatially so nearby thumbnails tend to share pages."""
     position_obj = asset.get("position")
-    if not isinstance(position_obj, (list, tuple)) or len(position_obj) != 3:
-        return (0, str(asset.get("id", "")))
-    coords = [float(value) for value in position_obj]
+    fallback = (0, str(asset.get("id", "")))
+    if not isinstance(position_obj, Sequence) or isinstance(
+        position_obj, str | bytes
+    ):
+        return fallback
+    position = cast("Sequence[object]", position_obj)
+    if len(position) != 3:
+        return fallback
+    coords: list[float] = []
+    for value in position:
+        if not isinstance(value, int | float):
+            return fallback
+        coords.append(float(value))
     # Layout coordinates are usually within a few hundred units; clamp to a
     # stable cube before Morton interleaving for locality-preserving pages.
-    normalized = [max(0, min(1023, int((coord + 512.0) * 1023.0 / 1024.0))) for coord in coords]
-    return (morton3(normalized[0], normalized[1], normalized[2]), str(asset.get("id", "")))
+    normalized = [
+        max(0, min(1023, int((coord + 512.0) * 1023.0 / 1024.0)))
+        for coord in coords
+    ]
+    return (
+        morton3(normalized[0], normalized[1], normalized[2]),
+        str(asset.get("id", "")),
+    )
 
 
 def morton3(x: int, y: int, z: int) -> int:
@@ -838,6 +923,7 @@ def write_thumbnail_atlas_page(  # noqa: PLR0913
     page_path: Path,
     assets: Sequence[Mapping[str, object]],
     *,
+    store: IndexStore,
     asset_root: Path,
     thumb_size: int,
     page_size: int,
@@ -847,12 +933,14 @@ def write_thumbnail_atlas_page(  # noqa: PLR0913
     page = Image.new("RGB", (page_size, page_size), (0, 0, 0))
     for cell_index, asset in enumerate(assets):
         asset_id = str(asset["id"])
-        source = generated_asset_path(asset_root, asset_id, thumbnail=True)
-        if source is None or not source.is_file():
+        source = thumbnail_source_path(store, asset_root, asset_id)
+        if source is None:
             continue
         with Image.open(source) as loaded:
             thumbnail = loaded.convert("RGB")
-            thumbnail.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+            thumbnail.thumbnail(
+                (thumb_size, thumb_size), Image.Resampling.LANCZOS
+            )
             col = cell_index % cols
             row = cell_index // cols
             x = col * thumb_size + (thumb_size - thumbnail.width) // 2
@@ -875,7 +963,10 @@ def texture_array_dir(
     layers_per_page: int = 256,
 ) -> Path:
     """Return texture-array cache directory for a tier."""
-    return texture_array_root(asset_root) / f"thumb{thumb_size}-layers{layers_per_page}"
+    return (
+        texture_array_root(asset_root)
+        / f"thumb{thumb_size}-layers{layers_per_page}"
+    )
 
 
 def texture_array_page_path(
@@ -886,11 +977,14 @@ def texture_array_page_path(
     layers_per_page: int = 256,
 ) -> Path:
     """Return one texture-array source page path."""
-    return texture_array_dir(
-        asset_root,
-        thumb_size=thumb_size,
-        layers_per_page=layers_per_page,
-    ) / f"page-{page_index}.jpg"
+    return (
+        texture_array_dir(
+            asset_root,
+            thumb_size=thumb_size,
+            layers_per_page=layers_per_page,
+        )
+        / f"page-{page_index}.jpg"
+    )
 
 
 def build_texture_array_index(
@@ -918,6 +1012,8 @@ def build_texture_array_index(
         layers_per_page=layers_per_page,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
+    cache_signature = store.asset_cache_signature()
+    regenerate_pages = cache_needs_regeneration(output_dir, cache_signature)
 
     entries: list[dict[str, object]] = []
     pages: list[dict[str, object]] = []
@@ -931,10 +1027,11 @@ def build_texture_array_index(
             thumb_size=thumb_size,
             layers_per_page=layers_per_page,
         )
-        if not page_path.is_file():
+        if regenerate_pages or not page_path.is_file():
             write_texture_array_source_page(
                 page_path,
                 page_assets,
+                store=store,
                 asset_root=asset_root,
                 thumb_size=thumb_size,
                 page_width=page_width,
@@ -957,9 +1054,12 @@ def build_texture_array_index(
                     "page": page_index,
                     "layer": layer,
                     "width": int(asset.get("width", thumb_size) or thumb_size),
-                    "height": int(asset.get("height", thumb_size) or thumb_size),
+                    "height": int(
+                        asset.get("height", thumb_size) or thumb_size
+                    ),
                 }
             )
+    write_cache_signature(output_dir, cache_signature)
     return {
         "format": "rgba8-grid-jpeg",
         "thumbSize": thumb_size,
@@ -979,6 +1079,7 @@ def write_texture_array_source_page(  # noqa: PLR0913
     page_path: Path,
     assets: Sequence[Mapping[str, object]],
     *,
+    store: IndexStore,
     asset_root: Path,
     thumb_size: int,
     page_width: int,
@@ -989,8 +1090,8 @@ def write_texture_array_source_page(  # noqa: PLR0913
     page = Image.new("RGB", (page_width, page_height), (0, 0, 0))
     for cell_index, asset in enumerate(assets):
         asset_id = str(asset["id"])
-        source = generated_asset_path(asset_root, asset_id, thumbnail=True)
-        if source is None or not source.is_file():
+        source = thumbnail_source_path(store, asset_root, asset_id)
+        if source is None:
             continue
         with Image.open(source) as loaded:
             thumbnail = loaded.convert("RGB")
@@ -1179,7 +1280,9 @@ def run_tk_file_dialog() -> Path | None:
     return Path(selected).expanduser().resolve() if selected else None
 
 
-def studio_status(status: IndexStatus | Mapping[str, object]) -> dict[str, object]:
+def studio_status(
+    status: IndexStatus | Mapping[str, object],
+) -> dict[str, object]:
     """Attach explicit Studio compatibility metadata to a status payload."""
     return {
         **dict(status),
@@ -1204,12 +1307,12 @@ def source_capabilities() -> dict[str, object]:
             },
             {
                 "type": "studioDataset",
-                "label": "Constellation Studio dataset",
+                "label": "Image Garden dataset",
                 "enabled": True,
                 "importEndpoint": "/api/import/studio",
                 "description": (
-                    "Open a constellation.json or constellation.studio.json "
-                    "set produced by Studio."
+                    "Open a BYO constellation.json or "
+                    "constellation.studio.json dataset with existing assets."
                 ),
             },
         ],

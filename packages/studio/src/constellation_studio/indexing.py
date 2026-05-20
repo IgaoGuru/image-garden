@@ -74,6 +74,15 @@ class StudioDatasetPaths:
 
 
 @dataclass(frozen=True, slots=True)
+class StudioDatasetRecord:
+    """Resolved BYO dataset image record."""
+
+    image: ImageJson
+    image_path: Path
+    thumbnail_path: Path
+
+
+@dataclass(frozen=True, slots=True)
 class IndexingPaths:
     """Filesystem paths used by the backend/indexer prototype."""
 
@@ -332,11 +341,14 @@ def batched[T](items: Sequence[T], batch_size: int) -> list[Sequence[T]]:
     ]
 
 
-def import_studio_dataset(
+def import_studio_dataset(  # noqa: PLR0913
     dataset_path: Path,
     *,
     store: IndexStore,
     asset_dir: Path | None = None,
+    embedding_provider: EmbeddingProvider | None = None,
+    batch_size: int = 64,
+    recompute_layout: bool = False,
 ) -> StudioImportResult:
     """Import a portable Constellation Studio dataset.
 
@@ -348,22 +360,35 @@ def import_studio_dataset(
     data = read_constellation_json(paths.data_json)
     source_id = studio_source_id(paths.data_json)
 
-    image_positions = positions_for_studio_images(data["images"])
-
     store.set_index_state("importing")
+    records = resolve_studio_dataset_records(data["images"], paths)
+    image_positions = positions_for_studio_records(
+        records,
+        asset_root=store.asset_root,
+        provider=embedding_provider,
+        batch_size=batch_size,
+        store=store,
+        recompute_layout=recompute_layout,
+    )
+
+    store.set_job_progress(
+        phase="indexing",
+        completed=0,
+        total=len(records),
+        message="Writing runtime catalog",
+    )
     imported = 0
-    for image in data["images"]:
-        image_path = resolve_studio_asset_path(image["url"], paths)
-        thumbnail_url = image.get("thumbnailUrl", image["url"])
-        thumbnail_path = resolve_studio_asset_path(thumbnail_url, paths)
+    runtime_assets: list[StoredRuntimeAsset] = []
+    for record in records:
+        image = record.image
         metadata = studio_runtime_metadata(image, paths.data_json)
         media_type = metadata_media_type(metadata)
         creation_date = metadata_str(metadata, "creationDate")
-        store.upsert_asset(
+        runtime_assets.append(
             StoredRuntimeAsset(
                 id=image["id"],
-                thumbnail_path=thumbnail_path,
-                file_path=image_path,
+                thumbnail_path=record.thumbnail_path,
+                file_path=record.image_path,
                 position=image_positions[image["id"]],
                 width=image.get("width"),
                 height=image.get("height"),
@@ -371,13 +396,20 @@ def import_studio_dataset(
                 source_type="studioDataset",
                 source_id=source_id,
                 source_asset_id=image["id"],
-                stable_key=stable_key_for_file(image_path),
+                stable_key=stable_key_for_file(record.image_path),
                 creation_date=creation_date,
                 media_type=media_type,
             ),
         )
         imported += 1
+    store.upsert_assets(runtime_assets)
 
+    store.set_job_progress(
+        phase="ready",
+        completed=len(records),
+        total=len(records),
+        message="Import complete",
+    )
     store.set_last_import_path(paths.data_json)
     store.set_index_state("idle")
     return StudioImportResult(
@@ -432,6 +464,30 @@ def resolve_studio_dataset_paths(
     )
 
 
+def resolve_studio_dataset_records(
+    images: Sequence[ImageJson], paths: StudioDatasetPaths
+) -> list[StudioDatasetRecord]:
+    """Resolve dataset image and thumbnail references without copying them."""
+    records: list[StudioDatasetRecord] = []
+    for image in images:
+        image_path = resolve_studio_asset_path(primary_image_url(image), paths)
+        thumbnail_url = image.get("thumbnailUrl", primary_image_url(image))
+        thumbnail_path = resolve_studio_asset_path(thumbnail_url, paths)
+        records.append(
+            StudioDatasetRecord(
+                image=image,
+                image_path=image_path,
+                thumbnail_path=thumbnail_path,
+            )
+        )
+    return records
+
+
+def primary_image_url(image: ImageJson) -> str:
+    """Return the full/local display URL for a dataset image."""
+    return image.get("fullUrl", image["url"])
+
+
 def read_manifest_file(path: Path) -> StudioManifestJson:
     """Read a concrete ``*.studio.json`` manifest path."""
     loaded: object = json.loads(path.read_text(encoding="utf-8"))
@@ -476,20 +532,33 @@ def infer_studio_image_root(
 
 
 def resolve_studio_asset_path(url: str, paths: StudioDatasetPaths) -> Path:
-    """Resolve a local URL from Studio JSON to an existing file path."""
-    route = unquote(urlsplit(url).path)
+    """Resolve a local URL/path from Studio JSON to an existing file path."""
+    split = urlsplit(url)
+    route = unquote(split.path)
     if not route:
         msg = "Studio asset URL is empty"
         raise ValueError(msg)
-    if urlsplit(url).scheme in {"http", "https"}:
+    if split.scheme in {"http", "https"}:
         msg = f"Studio asset URL must be local, got: {url}"
+        raise ValueError(msg)
+    if split.scheme == "file":
+        return require_existing_file(Path(route), url=url)
+    if split.scheme:
+        msg = f"Unsupported Studio asset URL scheme in: {url}"
         raise ValueError(msg)
 
     prefix = normalize_url_prefix(paths.url_prefix)
     if route.startswith(prefix):
         candidate = resolve_below(paths.image_root, route.removeprefix(prefix))
+    elif (
+        Path(route).expanduser().is_absolute()
+        and Path(route).expanduser().is_file()
+    ):
+        return require_existing_file(Path(route).expanduser(), url=url)
     elif route.startswith("/"):
         candidate = resolve_below(paths.image_root, route.lstrip("/"))
+    elif route.startswith("~/"):
+        return require_existing_file(Path(route).expanduser(), url=url)
     else:
         candidate = resolve_below(paths.data_json.parent, route)
 
@@ -497,6 +566,15 @@ def resolve_studio_asset_path(url: str, paths: StudioDatasetPaths) -> Path:
         msg = (
             f"Studio asset not found for URL {url!r} under {paths.image_root}"
         )
+        raise FileNotFoundError(msg)
+    return candidate
+
+
+def require_existing_file(path: Path, *, url: str) -> Path:
+    """Resolve and validate an explicit local file reference."""
+    candidate = path.expanduser().resolve()
+    if not candidate.is_file():
+        msg = f"Studio asset not found for URL {url!r}: {candidate}"
         raise FileNotFoundError(msg)
     return candidate
 
@@ -525,35 +603,162 @@ def stable_key_for_file(path: Path) -> str:
     return f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
 
 
-def positions_for_studio_images(
-    images: Sequence[ImageJson],
+def positions_for_studio_records(  # noqa: PLR0913
+    records: Sequence[StudioDatasetRecord],
+    *,
+    asset_root: Path,
+    provider: EmbeddingProvider | None,
+    batch_size: int,
+    store: IndexStore,
+    recompute_layout: bool = False,
 ) -> dict[str, Vec3]:
-    """Return precomputed positions or UMAP positions from Studio embeddings."""
-    image_list = list(images)
-    if all("position" in image for image in image_list):
+    """Return precomputed positions or build layout from BYO embeddings."""
+    record_list = list(records)
+    images = [record.image for record in record_list]
+    if not recompute_layout and all("position" in image for image in images):
         positions: dict[str, Vec3] = {}
-        for image in image_list:
+        for image in images:
             position = image.get("position")
             if position is None:  # pragma: no cover - narrowed by all() above
                 msg = f"missing position for image {image['id']}"
                 raise ValueError(msg)
             positions[image["id"]] = (position[0], position[1], position[2])
         return positions
-    if all("embedding" in image for image in image_list):
-        embeddings: dict[str, Embedding] = {}
-        for image in image_list:
-            embedding = image.get("embedding")
-            if embedding is None:  # pragma: no cover - narrowed by all() above
-                msg = f"missing embedding for image {image['id']}"
-                raise ValueError(msg)
-            embeddings[image["id"]] = tuple(embedding)
-        return positions_from_embeddings(embeddings)
-    msg = (
-        "Studio dataset must provide positions for every image or embeddings "
-        "for every image. Mixed positioned/embedding-only datasets are not "
-        "supported."
+    if not recompute_layout and any("position" in image for image in images):
+        msg = (
+            "Studio BYO dataset must provide positions for every image, or "
+            "omit positions and provide/compute embeddings for layout."
+        )
+        raise ValueError(msg)
+
+    store.set_job_progress(
+        phase="embedding",
+        completed=0,
+        total=len(record_list),
+        message="Preparing BYO dataset embeddings",
     )
-    raise ValueError(msg)
+    embeddings = embeddings_for_studio_records(
+        record_list,
+        asset_root=asset_root,
+        provider=provider,
+        batch_size=batch_size,
+        store=store,
+    )
+    store.set_job_progress(
+        phase="layout",
+        completed=0,
+        total=len(record_list),
+        message="Building 3D layout",
+    )
+    positions = positions_from_embeddings(embeddings)
+    store.set_job_progress(
+        phase="layout",
+        completed=len(record_list),
+        total=len(record_list),
+        message="Built 3D layout",
+    )
+    return positions
+
+
+def embeddings_for_studio_records(
+    records: Sequence[StudioDatasetRecord],
+    *,
+    asset_root: Path,
+    provider: EmbeddingProvider | None,
+    batch_size: int,
+    store: IndexStore,
+) -> dict[str, Embedding]:
+    """Return BYO embeddings, computing any missing vectors from image files."""
+    embeddings: dict[str, Embedding] = {}
+    missing: list[StudioDatasetRecord] = []
+    for record in records:
+        embedding = record.image.get("embedding")
+        if embedding is None:
+            missing.append(record)
+        else:
+            embeddings[record.image["id"]] = tuple(embedding)
+
+    if not missing:
+        store.set_job_progress(
+            phase="embedding",
+            completed=len(records),
+            total=len(records),
+            message="Using BYO dataset embeddings",
+        )
+        return embeddings
+    if provider is None:
+        msg = (
+            "Studio BYO dataset images without positions or embeddings require "
+            "an embedding engine. Start the backend with an embedding engine or "
+            "include position or embedding for every image."
+        )
+        raise ValueError(msg)
+
+    store.set_embedding_engine(provider.cache_namespace)
+    cache = EmbeddingCache(asset_root, provider.cache_namespace)
+    still_missing: list[StudioDatasetRecord] = []
+    for record in missing:
+        cache_key = byo_embedding_cache_key(record)
+        cached = cache.get(cache_key)
+        if cached is None:
+            still_missing.append(record)
+        else:
+            embeddings[record.image["id"]] = cached
+
+    completed = len(embeddings)
+    if completed:
+        store.set_job_progress(
+            phase="embedding",
+            completed=completed,
+            total=len(records),
+            message=f"Reused {completed} BYO dataset embeddings",
+        )
+
+    for batch in batched(still_missing, batch_size):
+        vectors = embed_studio_record_batch(provider, batch)
+        for record, vector in zip(batch, vectors, strict=True):
+            cache.set(byo_embedding_cache_key(record), vector)
+            embeddings[record.image["id"]] = vector
+        completed += len(batch)
+        store.set_job_progress(
+            phase="embedding",
+            completed=completed,
+            total=len(records),
+            message=f"Embedding BYO dataset with {provider.cache_namespace}",
+        )
+    return embeddings
+
+
+def byo_embedding_cache_key(record: StudioDatasetRecord) -> str:
+    """Return a stable, filesystem-safe BYO embedding cache key."""
+    digest = hashlib.sha256()
+    digest.update(record.image["id"].encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(stable_key_for_file(record.image_path).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def embed_studio_record_batch(
+    provider: EmbeddingProvider,
+    batch: Sequence[StudioDatasetRecord],
+) -> list[Embedding]:
+    """Embed BYO dataset images, preserving batch-splitting behavior."""
+    try:
+        vectors = provider.embed_images(
+            [record.image_path for record in batch]
+        )
+    except RuntimeError:
+        if len(batch) <= 1:
+            raise
+        midpoint = len(batch) // 2
+        return [
+            *embed_studio_record_batch(provider, batch[:midpoint]),
+            *embed_studio_record_batch(provider, batch[midpoint:]),
+        ]
+    if len(vectors) != len(batch):
+        msg = "embedding provider returned the wrong number of vectors"
+        raise RuntimeError(msg)
+    return vectors
 
 
 def studio_runtime_metadata(

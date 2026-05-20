@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -79,7 +80,14 @@ class EmbeddingCache:
 
     def path_for(self, image_id: str) -> Path:
         """Return the cache file path for image_id."""
-        return self.directory / f"{image_id}.json"
+        return self.directory / f"{safe_cache_key(image_id)}.json"
+
+
+def safe_cache_key(value: str) -> str:
+    """Return a single safe filename stem for an embedding cache key."""
+    if re.fullmatch(r"[A-Za-z0-9_.-]+", value) and value not in {".", ".."}:
+        return value
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def safe_namespace(namespace: str) -> str:

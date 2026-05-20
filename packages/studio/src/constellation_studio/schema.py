@@ -10,13 +10,14 @@ from typing import NotRequired, TypedDict, cast
 
 
 class ImageJson(TypedDict):
-    """One image record in the viewer data contract."""
+    """One image record in the viewer/BYO dataset contract."""
 
     id: str
     url: str
     embedding: NotRequired[list[float]]
     position: NotRequired[list[float]]
     thumbnailUrl: NotRequired[str]
+    fullUrl: NotRequired[str]
     width: NotRequired[int]
     height: NotRequired[int]
     metadata: NotRequired[dict[str, str]]
@@ -44,6 +45,7 @@ class EmbeddedImage:
     url: str
     embedding: tuple[float, ...]
     thumbnail_url: str | None = None
+    full_url: str | None = None
     width: int | None = None
     height: int | None = None
     metadata: dict[str, str] = field(default_factory=dict)
@@ -57,6 +59,8 @@ class EmbeddedImage:
         }
         if self.thumbnail_url is not None:
             payload["thumbnailUrl"] = self.thumbnail_url
+        if self.full_url is not None:
+            payload["fullUrl"] = self.full_url
         if self.width is not None:
             payload["width"] = self.width
         if self.height is not None:
@@ -173,9 +177,6 @@ def parse_image_json(image_obj: object, path: Path) -> ImageJson:
     }
     embedding = optional_embedding(image_mapping.get("embedding"), path)
     position = optional_position(image_mapping.get("position"), path)
-    if embedding is None and position is None:
-        msg = f"image must include embedding or position in: {path}"
-        raise ValueError(msg)
     if embedding is not None:
         image["embedding"] = embedding
     if position is not None:
@@ -231,6 +232,9 @@ def apply_optional_image_fields(
     thumbnail_url = optional_str(source, "thumbnailUrl")
     if thumbnail_url is not None:
         image["thumbnailUrl"] = thumbnail_url
+    full_url = optional_str(source, "fullUrl")
+    if full_url is not None:
+        image["fullUrl"] = full_url
     width = optional_int(source, "width")
     if width is not None:
         image["width"] = width

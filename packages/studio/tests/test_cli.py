@@ -28,6 +28,12 @@ def test_pyproject_exposes_image_garden_studio_entry_points() -> None:
     assert scripts["image-garden-download-onnx"] == (
         "constellation_studio.download_onnx:main"
     )
+    assert scripts["image-garden-import-dataset"] == (
+        "constellation_studio.import_dataset:main"
+    )
+    assert scripts["image-garden-export-positions"] == (
+        "constellation_studio.export_positions:main"
+    )
 
 
 def test_read_write_running_state_clears_stale_pid(tmp_path: Path) -> None:

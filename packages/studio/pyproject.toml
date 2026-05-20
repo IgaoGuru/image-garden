@@ -19,6 +19,7 @@ dependencies = [
     "numpy>=2.0",
     "pillow>=11.0",
     "pillow-heif>=1.1.1",
+    "rich>=15.0.0",
     "umap-learn>=0.5.7",
 ]
 
@@ -44,12 +45,16 @@ image-garden-app = "constellation_studio.app:main"
 image-garden-backend = "constellation_studio.backend:main"
 image-garden-embed = "constellation_studio.embed:main"
 image-garden-download-onnx = "constellation_studio.download_onnx:main"
+image-garden-import-dataset = "constellation_studio.import_dataset:main"
+image-garden-export-positions = "constellation_studio.export_positions:main"
 image-garden-serve = "constellation_studio.server:main"
 constellation = "constellation_studio.cli:main"
 constellation-app = "constellation_studio.app:main"
 constellation-backend = "constellation_studio.backend:main"
 constellation-embed = "constellation_studio.embed:main"
 constellation-download-onnx = "constellation_studio.download_onnx:main"
+constellation-import-dataset = "constellation_studio.import_dataset:main"
+constellation-export-positions = "constellation_studio.export_positions:main"
 constellation-serve = "constellation_studio.server:main"
 
 [dependency-groups]

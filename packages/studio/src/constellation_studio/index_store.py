@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Generator, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NotRequired, TypedDict, cast
@@ -276,6 +278,57 @@ class IndexStore:
             )
         return [runtime_asset_from_row(row) for row in rows]
 
+    def asset_positions_for_source(
+        self, *, source_type: str, source_id: str
+    ) -> dict[str, Vec3]:
+        """Return source_asset_id -> position for one imported source."""
+        with self._connect() as connection:
+            rows = cast(
+                "list[sqlite3.Row]",
+                connection.execute(
+                    """
+                    SELECT source_asset_id, x, y, z
+                    FROM assets
+                    WHERE source_type = ? AND source_id = ?
+                    ORDER BY source_asset_id
+                    """,
+                    (source_type, source_id),
+                ).fetchall(),
+            )
+        return {
+            row_str(row, "source_asset_id"): (
+                row_float(row, "x"),
+                row_float(row, "y"),
+                row_float(row, "z"),
+            )
+            for row in rows
+        }
+
+    def asset_cache_signature(self) -> str:
+        """Return a content signature for generated atlas/texture caches."""
+        digest = hashlib.sha256()
+        with self._connect() as connection:
+            rows = cast(
+                "list[sqlite3.Row]",
+                connection.execute(
+                    """
+                    SELECT id, thumbnail_path, stable_key, updated_at
+                    FROM assets
+                    ORDER BY id
+                    """
+                ).fetchall(),
+            )
+        for row in rows:
+            digest.update(row_str(row, "id").encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(row_str(row, "thumbnail_path").encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(row_str(row, "stable_key").encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(row_str(row, "updated_at").encode("utf-8"))
+            digest.update(b"\n")
+        return digest.hexdigest()
+
     def nearby_assets(
         self,
         *,
@@ -368,11 +421,19 @@ class IndexStore:
             return 0
         return int(str(cast("object", row[0])))
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection]:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.db_path, timeout=30.0)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _set_status_value(
         self,

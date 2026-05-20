@@ -105,6 +105,80 @@ pnpm studio:download-onnx -- --model clip-vit-base-patch32
 Models are not bundled in releases; installer/app setup downloads them into
 user-local app data. Embeddings stay local. The `onnx` optional dependency installs ONNX Runtime for the default local engine; the `openclip` optional dependency installs the advanced PyTorch/OpenCLIP path for experimentation.
 
+## Bring your own dataset
+
+Studio supports a single portable dataset contract for generated and external
+assets: `constellation.json` with a top-level `images` array. BYO datasets may
+reference existing JPEGs/thumbnails in place; Studio preserves caller-provided
+ids and never regenerates assets during dataset import.
+
+```json
+{
+  "images": [
+    {
+      "id": "page-0001",
+      "url": "source-images/page-0001.jpg",
+      "thumbnailUrl": "thumbs/page-0001.jpg",
+      "width": 377,
+      "height": 512,
+      "metadata": { "source": "external" }
+    }
+  ]
+}
+```
+
+Supported image references are local paths relative to the dataset JSON,
+`file://` URLs, absolute local paths, or URL-style paths under the sidecar
+`urlPrefix`. HTTP(S) URLs are intentionally rejected by the local importer.
+
+Layout inputs are resolved in this order:
+
+1. If every image has `position`, Studio imports those runtime positions
+   directly.
+2. Pass `--recompute-layout` to ignore existing positions and rebuild layout
+   from embeddings/the configured embedding engine.
+3. Otherwise, Studio uses every provided `embedding` and computes any missing
+   embeddings from `url`/`fullUrl` with the configured embedding engine, then
+   builds the 3D layout.
+4. If positions are incomplete and embeddings are missing while no embedding
+   engine is configured, import fails with a clear error.
+
+Optional sidecar `constellation.studio.json` remains supported:
+
+```json
+{
+  "imageRoot": "/absolute/path/to/assets",
+  "dataJson": "/absolute/path/to/constellation.json",
+  "urlPrefix": "/assets/"
+}
+```
+
+Import from the CLI to build the runtime SQLite index, computing missing
+embeddings when an embedding engine is configured:
+
+```bash
+image-garden-import-dataset /path/to/constellation.json \
+  --data-dir .image-garden-backend \
+  --embedding-engine onnx \
+  --onnx-model /path/to/mobileclip-s1-vision.onnx
+```
+
+Export runtime positions back into the original portable JSON while
+preserving unrelated fields:
+
+```bash
+image-garden-export-positions /path/to/constellation.json \
+  --data-dir .image-garden-backend
+```
+
+Import via backend API:
+
+```bash
+curl -X POST http://127.0.0.1:8766/api/import/studio \
+  -H 'Content-Type: application/json' \
+  -d '{"path":"/path/to/constellation.json", "assetDir":"/path/to/assets"}'
+```
+
 ## Local backend API prototype
 
 `image-garden-backend` persists positioned runtime assets in SQLite while continuing to reuse the folder JPEG sanitization path:

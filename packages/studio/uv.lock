@@ -276,6 +276,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pillow" },
     { name = "pillow-heif" },
+    { name = "rich" },
     { name = "umap-learn" },
 ]
 
@@ -303,6 +304,7 @@ requires-dist = [
     { name = "open-clip-torch", marker = "extra == 'openclip'", specifier = ">=3.0.0" },
     { name = "pillow", specifier = ">=11.0" },
     { name = "pillow-heif", specifier = ">=1.1.1" },
+    { name = "rich", specifier = ">=15.0.0" },
     { name = "torch", marker = "extra == 'openclip'", specifier = ">=2.10.0" },
     { name = "torchvision", marker = "extra == 'openclip'", specifier = ">=0.25.0" },
     { name = "umap-learn", specifier = ">=0.5.7" },

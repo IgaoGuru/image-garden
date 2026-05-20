@@ -11,9 +11,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageStat
 
-from constellation_studio.backend import run_test_backend
+from constellation_studio.backend import (
+    build_texture_array_index,
+    run_test_backend,
+)
 from constellation_studio.embedding_providers import (
     CLIP_IMAGE_MEAN,
     CLIP_IMAGE_STD,
@@ -250,6 +253,45 @@ def test_import_folder_splits_embedding_batches_on_runtime_failure(
     assert embedder.calls == [4, 2, 2]
 
 
+def test_texture_array_uses_studio_dataset_thumbnail_paths(
+    tmp_path: Path,
+) -> None:
+    create_image(tmp_path / "images" / "one.jpg", (255, 0, 0), size=(24, 24))
+    create_image(tmp_path / "thumbs" / "one.jpg", (250, 10, 20), size=(12, 12))
+    data_path = tmp_path / "constellation.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {
+                        "id": "external-one",
+                        "url": "images/one.jpg",
+                        "thumbnailUrl": "thumbs/one.jpg",
+                        "position": [1, 2, 3],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+    _ = import_studio_dataset(data_path, store=store)
+
+    _ = build_texture_array_index(
+        store,
+        paths.asset_root,
+        thumb_size=16,
+        layers_per_page=4,
+    )
+
+    page = Image.open(
+        paths.asset_root / "texture-array" / "thumb16-layers4" / "page-0.jpg"
+    ).convert("RGB")
+    stat = ImageStat.Stat(page.crop((0, 0, 16, 16)))
+    assert stat.mean[0] > 150
+
+
 def test_import_studio_dataset_persists_runtime_assets(
     tmp_path: Path,
 ) -> None:
@@ -295,6 +337,122 @@ def test_import_studio_dataset_persists_runtime_assets(
     assert metadata is not None
     assert metadata["datasetPath"] == str(data_path.resolve())
     assert metadata["sourcePath"] == "/original/one.jpg"
+
+
+def test_import_studio_dataset_computes_missing_embeddings(
+    tmp_path: Path,
+) -> None:
+    create_image(
+        tmp_path / "studio-assets" / "images" / "one.jpg", (255, 0, 0)
+    )
+    create_image(
+        tmp_path / "studio-assets" / "thumbs" / "one.jpg", (0, 255, 0)
+    )
+    data_path = tmp_path / "constellation.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {
+                        "id": "external-one",
+                        "url": "/assets/images/one.jpg",
+                        "thumbnailUrl": "/assets/thumbs/one.jpg",
+                        "width": 8,
+                        "height": 6,
+                        "metadata": {"source": "byo"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_studio_manifest(
+        data_path=data_path,
+        image_root=tmp_path / "studio-assets",
+        url_prefix="/assets/",
+    )
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+
+    result = import_studio_dataset(
+        data_path,
+        store=store,
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+        batch_size=1,
+    )
+
+    assert result.imported == 1
+    status = store.status()
+    assert status.get("embeddingEngine") == "deterministic/8"
+    asset = store.list_assets(limit=10, offset=0)[0]
+    assert asset["id"] == "external-one"
+    assert asset["position"] == (0.0, 0.0, 0.0)
+    metadata = asset.get("metadata")
+    assert metadata is not None
+    assert metadata["source"] == "byo"
+
+
+def test_import_studio_dataset_requires_engine_for_image_only_dataset(
+    tmp_path: Path,
+) -> None:
+    create_image(tmp_path / "images" / "one.jpg", (255, 0, 0))
+    data_path = tmp_path / "constellation.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {
+                        "id": "external-one",
+                        "url": "images/one.jpg",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    paths = default_indexing_paths(tmp_path / "data")
+    store = IndexStore(paths.db_path, asset_root=paths.asset_root)
+
+    with pytest.raises(ValueError, match="require an embedding engine"):
+        import_studio_dataset(data_path, store=store)
+
+
+def test_backend_import_studio_route_computes_image_only_dataset(
+    tmp_path: Path,
+) -> None:
+    create_image(tmp_path / "images" / "one.jpg", (255, 0, 0))
+    data_path = tmp_path / "constellation.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "images": [
+                    {
+                        "id": "external-one",
+                        "url": "images/one.jpg",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with run_test_backend(
+        data_dir=tmp_path / "app-data",
+        embedding_provider=DeterministicEmbeddingProvider(dimensions=8),
+        embedding_batch_size=1,
+    ) as base_url:
+        imported = post_json(
+            f"{base_url}api/import/studio",
+            {"path": str(data_path)},
+        )
+        assert isinstance(imported, dict)
+        assert imported["ok"] is True
+        assert imported["imported"] == 1
+
+        listed = fetch_json(f"{base_url}api/assets")
+        assert isinstance(listed, dict)
+        assert listed["total"] == 1
+        assert listed["assets"][0]["id"] == "external-one"
 
 
 def test_backend_background_folder_import_reports_progress(
