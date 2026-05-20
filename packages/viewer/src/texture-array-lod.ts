@@ -646,7 +646,7 @@ export class TextureArrayLodManager {
   }
 
   private requestHighRes(record: TextureArrayRecord): void {
-    if (!this.options.highRes || this.highResViews.has(record.image.id) || this.highResQueue.has(record.image.id)) return;
+    if (this.highResViews.has(record.image.id) || this.highResQueue.has(record.image.id)) return;
     const url = this.highResUrl(record);
     if (!url) return;
     this.highResQueue.request({
@@ -657,7 +657,7 @@ export class TextureArrayLodManager {
   }
 
   private addHighResView(record: TextureArrayRecord, texture: Texture): void {
-    if (!this.options.highRes || this.highResViews.has(record.image.id)) return;
+    if (this.highResViews.has(record.image.id)) return;
     if (!this.highResDesiredIds.has(record.image.id) && record.image.id !== this.selectedId && record.image.id !== this.hoveredId) {
       this.highResQueue.disposeTexture(record.image.id);
       return;
