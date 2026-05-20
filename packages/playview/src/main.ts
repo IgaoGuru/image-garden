@@ -47,6 +47,8 @@ interface LayoutTuning {
   minCardScreenHeightPx: number;
   frustumCullMargin: number;
   maxTexturedCards: number;
+  highResDistance: number;
+  debugLod: boolean;
   frustumCullCards: boolean;
 }
 
@@ -90,6 +92,9 @@ const lodFrustumMarginInput = mustQuery<HTMLInputElement>('#lod-frustum-margin')
 const lodFrustumMarginValue = mustQuery<HTMLOutputElement>('#lod-frustum-margin-value');
 const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
 const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
+const highResDistanceInput = mustQuery<HTMLInputElement>('#high-res-distance');
+const highResDistanceValue = mustQuery<HTMLOutputElement>('#high-res-distance-value');
+const debugLodEnabled = mustQuery<HTMLInputElement>('#debug-lod-enabled');
 const lodFrustumEnabled = mustQuery<HTMLInputElement>('#lod-frustum-enabled');
 const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
 const windVolumeInput = mustQuery<HTMLInputElement>('#wind-volume');
@@ -139,6 +144,8 @@ const defaultLayoutTuning: LayoutTuning = {
   minCardScreenHeightPx: 20,
   frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
+  highResDistance: 80,
+  debugLod: false,
   frustumCullCards: true,
 };
 let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
@@ -213,7 +220,8 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         textureArrayPageConcurrency: 4,
         textureArrayMaxPages: 40,
         highRes: true,
-        highResDistance: 80,
+        debugLod: layoutTuning.debugLod,
+        highResDistance: layoutTuning.highResDistance,
         highResScreenHeightPx: 220,
         highResUnloadDistance: 140,
         highResMaxTextures: 8,
@@ -304,6 +312,8 @@ function setupLayoutControls(): void {
     lodMinScreenHeightInput,
     lodFrustumMarginInput,
     lodMaxCardsInput,
+    highResDistanceInput,
+    debugLodEnabled,
     lodFrustumEnabled,
   ]) {
     input.addEventListener('input', () => {
@@ -343,6 +353,8 @@ function readLayoutControls(): LayoutTuning {
     minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
     frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
     maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
+    highResDistance: numericInput(highResDistanceInput, defaultLayoutTuning.highResDistance),
+    debugLod: debugLodEnabled.checked,
     frustumCullCards: lodFrustumEnabled.checked,
   };
 }
@@ -369,6 +381,9 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   lodFrustumMarginValue.value = `${Math.round(tuning.frustumCullMargin * 100)}%`;
   lodMaxCardsInput.value = String(tuning.maxTexturedCards);
   lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
+  highResDistanceInput.value = String(tuning.highResDistance);
+  highResDistanceValue.value = tuning.highResDistance.toFixed(0);
+  debugLodEnabled.checked = tuning.debugLod;
   lodFrustumEnabled.checked = tuning.frustumCullCards;
 }
 
@@ -381,7 +396,7 @@ async function rerenderGarden(): Promise<void> {
   await nextFrame();
   rerendering.classList.remove('visible');
   rerendering.setAttribute('aria-hidden', 'true');
-  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · full-res ${layoutTuning.highResDistance.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
 }
 
 function numericInput(input: HTMLInputElement, fallback: number): number {

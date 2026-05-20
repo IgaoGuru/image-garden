@@ -82,6 +82,7 @@ interface TextureArrayPageView {
 interface HighResView {
   record: TextureArrayRecord;
   mesh: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  overlay: Mesh<PlaneGeometry, MeshBasicMaterial> | null;
   lastUsedFrame: number;
 }
 
@@ -133,6 +134,7 @@ export class TextureArrayLodManager {
       | 'textureArrayPageConcurrency'
       | 'textureArrayMaxPages'
       | 'highRes'
+      | 'debugLod'
       | 'highResDistance'
       | 'highResScreenHeightPx'
       | 'highResUnloadDistance'
@@ -150,6 +152,7 @@ export class TextureArrayLodManager {
     textureArrayPageConcurrency: number;
     textureArrayMaxPages: number;
     highRes: boolean;
+    debugLod: boolean;
     highResDistance: number;
     highResScreenHeightPx: number;
     highResUnloadDistance: number;
@@ -207,6 +210,7 @@ export class TextureArrayLodManager {
       textureArrayPageConcurrency: options.textureArrayPageConcurrency ?? 4,
       textureArrayMaxPages: options.textureArrayMaxPages ?? 16,
       highRes: options.highRes ?? false,
+      debugLod: options.debugLod ?? false,
       highResDistance,
       highResScreenHeightPx: options.highResScreenHeightPx ?? 260,
       highResUnloadDistance: options.highResUnloadDistance ?? highResDistance * 1.5,
@@ -452,7 +456,7 @@ export class TextureArrayLodManager {
     const layer = new InstancedBufferAttribute(new Float32Array(capacity), 1);
     layer.setUsage(DynamicDrawUsage);
     geometry.setAttribute('instanceLayer', layer);
-    const material = createTextureArrayMaterial(texture);
+    const material = createTextureArrayMaterial(texture, this.options.debugLod);
     const mesh = new InstancedMesh(geometry, material, capacity);
     mesh.count = 0;
     mesh.frustumCulled = false;
@@ -599,8 +603,10 @@ export class TextureArrayLodManager {
     mesh.frustumCulled = false;
     mesh.renderOrder = 10;
     mesh.userData.id = record.image.id;
+    const overlay = this.options.debugLod ? createHighResDebugOverlay() : null;
+    if (overlay) mesh.add(overlay);
     this.highResGroup.add(mesh);
-    const view: HighResView = { record, mesh, lastUsedFrame: this.frame };
+    const view: HighResView = { record, mesh, overlay, lastUsedFrame: this.frame };
     this.highResViews.set(record.image.id, view);
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (camera) this.updateHighResMeshes(camera);
@@ -642,6 +648,8 @@ export class TextureArrayLodManager {
     const view = this.highResViews.get(id);
     if (!view) return;
     this.highResGroup.remove(view.mesh);
+    view.overlay?.geometry.dispose();
+    view.overlay?.material.dispose();
     view.mesh.geometry.dispose();
     view.mesh.material.dispose();
     if (options.disposeTexture) this.highResQueue.disposeTexture(id);
@@ -684,6 +692,8 @@ export class TextureArrayLodManager {
       textureArrayPagesLoaded: this.pageViews.size,
       highResActiveCards: this.highResDesiredIds.size,
       highResLoadedTextures: this.highResViews.size,
+      highResDistance: this.options.highResDistance,
+      debugLod: this.options.debugLod,
       highResMaxTextures: this.options.highResMaxTextures,
       highResQueue: this.highResQueue.getDebugStats(),
       textureQueue: this.textureQueueStats(),
@@ -711,6 +721,8 @@ export class TextureArrayLodManager {
       textureArrayPagesLoaded: 0,
       highResActiveCards: 0,
       highResLoadedTextures: 0,
+      highResDistance: this.options.highResDistance,
+      debugLod: this.options.debugLod,
       highResMaxTextures: this.options.highResMaxTextures,
       highResQueue: this.highResQueue.getDebugStats(),
       textureQueue: this.textureQueueStats(),
@@ -817,10 +829,27 @@ export class TextureArrayLodManager {
   }
 }
 
-function createTextureArrayMaterial(texture: DataArrayTexture): ShaderMaterial {
+function createHighResDebugOverlay(): Mesh<PlaneGeometry, MeshBasicMaterial> {
+  const material = new MeshBasicMaterial({
+    color: 0x00ff00,
+    opacity: 0.5,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  const overlay = new Mesh(new PlaneGeometry(1, 1), material);
+  overlay.position.z = 0.01;
+  overlay.renderOrder = 11;
+  return overlay;
+}
+
+function createTextureArrayMaterial(texture: DataArrayTexture, debugLod: boolean): ShaderMaterial {
   return new ShaderMaterial({
     glslVersion: GLSL3,
-    uniforms: { mapArray: { value: texture } },
+    uniforms: {
+      mapArray: { value: texture },
+      debugOverlayOpacity: { value: debugLod ? 0.5 : 0.0 },
+    },
     vertexShader: `
       in float instanceLayer;
       out vec2 vUv;
@@ -834,12 +863,14 @@ function createTextureArrayMaterial(texture: DataArrayTexture): ShaderMaterial {
     fragmentShader: `
       precision highp sampler2DArray;
       uniform sampler2DArray mapArray;
+      uniform float debugOverlayOpacity;
       in vec2 vUv;
       flat in int vLayer;
       out vec4 outColor;
       void main() {
         vec4 color = texture(mapArray, vec3(vec2(vUv.x, 1.0 - vUv.y), float(vLayer)));
-        outColor = vec4(color.rgb, 1.0);
+        vec3 debugColor = mix(color.rgb, vec3(1.0, 0.0, 0.0), debugOverlayOpacity);
+        outColor = vec4(debugColor, 1.0);
         #if defined( TONE_MAPPING )
           outColor.rgb = toneMapping(outColor.rgb);
         #endif

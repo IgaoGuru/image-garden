@@ -108,6 +108,7 @@ export class AtlasLodManager {
       | 'textureArrayPageConcurrency'
       | 'textureArrayMaxPages'
       | 'highRes'
+      | 'debugLod'
       | 'highResDistance'
       | 'highResScreenHeightPx'
       | 'highResUnloadDistance'

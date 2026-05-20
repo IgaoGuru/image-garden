@@ -154,6 +154,8 @@ export interface SpriteOptions {
   textureArrayMaxPages?: number;
   /** Lazily promote very close/selected texture-array cards to individual full-resolution textures. */
   highRes?: boolean;
+  /** Tint thumbnail cards red and full-resolution cards green to inspect LOD promotion. */
+  debugLod?: boolean;
   /** World-space distance under which visible cards become eligible for full-resolution promotion. */
   highResDistance?: number;
   /** Screen-space card height above which visible cards become eligible for full-resolution promotion. */
@@ -228,6 +230,8 @@ export interface ViewerDebugStats {
     textureArrayPagesLoaded?: number;
     highResActiveCards?: number;
     highResLoadedTextures?: number;
+    highResDistance?: number;
+    debugLod?: boolean;
     highResMaxTextures?: number;
     highResQueue?: TextureQueueDebugStats;
     textureQueue: TextureQueueDebugStats;

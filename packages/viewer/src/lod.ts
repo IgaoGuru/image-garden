@@ -63,6 +63,7 @@ export class PointLodManager {
       | 'textureArrayPageConcurrency'
       | 'textureArrayMaxPages'
       | 'highRes'
+      | 'debugLod'
       | 'highResDistance'
       | 'highResScreenHeightPx'
       | 'highResUnloadDistance'
