@@ -152,6 +152,18 @@ export interface SpriteOptions {
   textureArrayIndexUrl?: string;
   textureArrayPageConcurrency?: number;
   textureArrayMaxPages?: number;
+  /** Lazily promote very close/selected texture-array cards to individual full-resolution textures. */
+  highRes?: boolean;
+  /** World-space distance under which visible cards become eligible for full-resolution promotion. */
+  highResDistance?: number;
+  /** Screen-space card height above which visible cards become eligible for full-resolution promotion. */
+  highResScreenHeightPx?: number;
+  /** Distance after which non-selected full-resolution cards are eligible for eviction. */
+  highResUnloadDistance?: number;
+  /** Cap for concurrently resident full-resolution textures. */
+  highResMaxTextures?: number;
+  /** Cap for concurrent full-resolution image fetches. */
+  highResMaxConcurrentLoads?: number;
   /** Use server-generated thumbnail atlas pages in LOD mode. Requires `atlasIndexUrl`. */
   atlas?: boolean;
   atlasIndexUrl?: string;
@@ -214,6 +226,10 @@ export interface ViewerDebugStats {
     atlasPagesLoaded?: number;
     textureArrayReady?: boolean;
     textureArrayPagesLoaded?: number;
+    highResActiveCards?: number;
+    highResLoadedTextures?: number;
+    highResMaxTextures?: number;
+    highResQueue?: TextureQueueDebugStats;
     textureQueue: TextureQueueDebugStats;
   };
 }

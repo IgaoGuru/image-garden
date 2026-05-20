@@ -107,6 +107,12 @@ export class AtlasLodManager {
       | 'textureArrayIndexUrl'
       | 'textureArrayPageConcurrency'
       | 'textureArrayMaxPages'
+      | 'highRes'
+      | 'highResDistance'
+      | 'highResScreenHeightPx'
+      | 'highResUnloadDistance'
+      | 'highResMaxTextures'
+      | 'highResMaxConcurrentLoads'
       | 'atlasIndexUrl'
     >
   > & {

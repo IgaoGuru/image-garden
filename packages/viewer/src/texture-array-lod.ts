@@ -11,6 +11,8 @@ import {
   InstancedMesh,
   LinearFilter,
   Matrix4,
+  Mesh,
+  MeshBasicMaterial,
   Object3D,
   PerspectiveCamera,
   PlaneGeometry,
@@ -23,11 +25,13 @@ import {
   Sphere,
   RGBAFormat,
   SRGBColorSpace,
+  Texture,
   UnsignedByteType,
   Vector2,
   Vector3,
 } from 'three';
 
+import { TextureLoadQueue } from './loader';
 import { viewportHeightScaleForCap } from './sprites';
 import type {
   ConstellationImage,
@@ -75,6 +79,12 @@ interface TextureArrayPageView {
   lastUsedFrame: number;
 }
 
+interface HighResView {
+  record: TextureArrayRecord;
+  mesh: Mesh<PlaneGeometry, MeshBasicMaterial>;
+  lastUsedFrame: number;
+}
+
 export interface TextureArrayLodManagerOptions extends SpriteOptions {
   onSelect?: (image: ConstellationImage) => void;
   onHover?: (image: ConstellationImage | null) => void;
@@ -83,6 +93,7 @@ export interface TextureArrayLodManagerOptions extends SpriteOptions {
 export class TextureArrayLodManager {
   private readonly group = new Group();
   private readonly cardGroup = new Group();
+  private readonly highResGroup = new Group();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
@@ -98,6 +109,9 @@ export class TextureArrayLodManager {
   private readonly pageLoading = new Set<number>();
   private readonly pageViews = new Map<number, TextureArrayPageView>();
   private readonly pageByIndex = new Map<number, TextureArrayIndexPage>();
+  private readonly highResViews = new Map<string, HighResView>();
+  private readonly highResDesiredIds = new Set<string>();
+  private highResQueue: TextureLoadQueue;
   private readonly domElement: HTMLElement;
   private readonly options: Required<
     Omit<
@@ -118,6 +132,12 @@ export class TextureArrayLodManager {
       | 'atlasMaxPages'
       | 'textureArrayPageConcurrency'
       | 'textureArrayMaxPages'
+      | 'highRes'
+      | 'highResDistance'
+      | 'highResScreenHeightPx'
+      | 'highResUnloadDistance'
+      | 'highResMaxTextures'
+      | 'highResMaxConcurrentLoads'
     >
   > & {
     selectedColor: number;
@@ -129,6 +149,12 @@ export class TextureArrayLodManager {
     textureArrayIndexUrl: string | null;
     textureArrayPageConcurrency: number;
     textureArrayMaxPages: number;
+    highRes: boolean;
+    highResDistance: number;
+    highResScreenHeightPx: number;
+    highResUnloadDistance: number;
+    highResMaxTextures: number;
+    highResMaxConcurrentLoads: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
@@ -156,6 +182,7 @@ export class TextureArrayLodManager {
   ) {
     this.domElement = domElement;
     const lazyLoadDistance = options.lazyLoadDistance ?? 180;
+    const highResDistance = options.highResDistance ?? lazyLoadDistance * 0.18;
     this.options = {
       size: options.size ?? 8,
       minSize: options.minSize ?? 1,
@@ -179,12 +206,20 @@ export class TextureArrayLodManager {
       textureArrayIndexUrl: options.textureArrayIndexUrl ?? null,
       textureArrayPageConcurrency: options.textureArrayPageConcurrency ?? 4,
       textureArrayMaxPages: options.textureArrayMaxPages ?? 16,
+      highRes: options.highRes ?? false,
+      highResDistance,
+      highResScreenHeightPx: options.highResScreenHeightPx ?? 260,
+      highResUnloadDistance: options.highResUnloadDistance ?? highResDistance * 1.5,
+      highResMaxTextures: options.highResMaxTextures ?? 8,
+      highResMaxConcurrentLoads: options.highResMaxConcurrentLoads ?? 2,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
+    this.highResQueue = new TextureLoadQueue(this.options.highResMaxConcurrentLoads);
     this.debugStats = this.emptyDebugStats();
     this.raycaster.params.Points = { threshold: this.options.pointPickRadius };
     this.group.add(this.cardGroup);
+    this.group.add(this.highResGroup);
     this.scene.add(this.group);
     this.setImages(images);
     if (this.options.textureArrayIndexUrl) void this.loadTextureArrayIndex();
@@ -228,6 +263,7 @@ export class TextureArrayLodManager {
     this.frame += 1;
     this.updateAccumulator += deltaSeconds;
     this.updateBillboards(camera);
+    this.updateHighResMeshes(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
@@ -245,11 +281,17 @@ export class TextureArrayLodManager {
       if (record) {
         this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
         if (record.textureArray) this.requestPage(record.textureArray.page);
+        this.requestHighRes(record);
       }
     }
   }
 
   pick(): PositionedImage | null {
+    const highResIntersections = this.raycaster.intersectObjects([...this.highResViews.values()].map((view) => view.mesh), false);
+    const highResObject = highResIntersections[0]?.object;
+    const highResId = typeof highResObject?.userData.id === 'string' ? highResObject.userData.id : undefined;
+    if (highResId) return this.records.get(highResId)?.image ?? null;
+
     const cardIntersections = this.raycaster.intersectObjects([...this.pageViews.values()].map((view) => view.mesh), false);
     const cardObject = cardIntersections[0]?.object;
     const cardId = typeof cardObject?.userData.id === 'string' ? cardObject.userData.id : undefined;
@@ -284,6 +326,8 @@ export class TextureArrayLodManager {
     this.scene.remove(this.group);
     for (const view of this.pageViews.values()) view.texture.dispose();
     this.pageViews.clear();
+    this.disposeHighResViews({ disposeTextures: false });
+    this.highResQueue.dispose();
   }
 
   private async loadTextureArrayIndex(): Promise<void> {
@@ -354,8 +398,10 @@ export class TextureArrayLodManager {
     for (const record of this.desiredRecords) {
       if (record.textureArray) this.requestPage(record.textureArray.page);
     }
+    this.updateHighResCandidates(camera);
     this.evictUnusedPages();
     this.rebuildPageInstances(camera.quaternion);
+    this.updateHighResMeshes(camera);
     this.debugStats = this.debugSnapshot(performance.now() - startedAt);
   }
 
@@ -487,6 +533,127 @@ export class TextureArrayLodManager {
     }
   }
 
+  private updateHighResCandidates(camera: PerspectiveCamera): void {
+    this.highResDesiredIds.clear();
+    if (!this.options.highRes || this.options.highResMaxTextures <= 0) {
+      this.disposeHighResViews({ disposeTextures: true });
+      return;
+    }
+
+    const pinned = new Set([this.selectedId, this.hoveredId].filter((id): id is string => id !== null));
+    const candidates: TextureArrayRecord[] = [];
+    for (const record of this.desiredRecords) {
+      if (!this.highResUrl(record)) continue;
+      const [, height] = this.getCardDimensions(record.image);
+      const screenHeight = this.screenHeightPx(record, height, camera);
+      if (
+        pinned.has(record.image.id)
+        || record.lastDistance <= this.options.highResDistance
+        || screenHeight >= this.options.highResScreenHeightPx
+      ) {
+        candidates.push(record);
+      }
+    }
+    for (const id of pinned) {
+      const record = this.records.get(id);
+      if (record && this.highResUrl(record) && !candidates.some((candidate) => candidate.image.id === id)) {
+        candidates.unshift(record);
+      }
+    }
+
+    const desired = candidates
+      .sort((a, b) => {
+        const pinnedDelta = Number(pinned.has(b.image.id)) - Number(pinned.has(a.image.id));
+        return pinnedDelta !== 0 ? pinnedDelta : a.lastDistance - b.lastDistance;
+      })
+      .slice(0, this.options.highResMaxTextures);
+    for (const record of desired) {
+      this.highResDesiredIds.add(record.image.id);
+      this.requestHighRes(record);
+    }
+    this.evictHighResViews();
+  }
+
+  private requestHighRes(record: TextureArrayRecord): void {
+    if (!this.options.highRes || this.highResViews.has(record.image.id) || this.highResQueue.has(record.image.id)) return;
+    const url = this.highResUrl(record);
+    if (!url) return;
+    this.highResQueue.request({
+      id: record.image.id,
+      url,
+      onLoad: (texture) => this.addHighResView(record, texture),
+    });
+  }
+
+  private addHighResView(record: TextureArrayRecord, texture: Texture): void {
+    if (!this.options.highRes || this.highResViews.has(record.image.id)) return;
+    if (!this.highResDesiredIds.has(record.image.id) && record.image.id !== this.selectedId && record.image.id !== this.hoveredId) {
+      this.highResQueue.disposeTexture(record.image.id);
+      return;
+    }
+    texture.colorSpace = SRGBColorSpace;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    const material = new MeshBasicMaterial({ map: texture, side: DoubleSide });
+    const mesh = new Mesh(new PlaneGeometry(1, 1), material);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 10;
+    mesh.userData.id = record.image.id;
+    this.highResGroup.add(mesh);
+    const view: HighResView = { record, mesh, lastUsedFrame: this.frame };
+    this.highResViews.set(record.image.id, view);
+    const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
+    if (camera) this.updateHighResMeshes(camera);
+  }
+
+  private updateHighResMeshes(camera: PerspectiveCamera): void {
+    if (this.highResViews.size === 0) return;
+    camera.updateMatrixWorld(true);
+    camera.getWorldDirection(this.cameraForward).normalize();
+    for (const view of this.highResViews.values()) {
+      const [width, height] = this.getCardDimensions(view.record.image);
+      view.mesh.position.copy(view.record.position).addScaledVector(this.cameraForward, -0.04);
+      view.mesh.quaternion.copy(camera.quaternion);
+      view.mesh.scale.set(width, height, 1);
+      if (this.highResDesiredIds.has(view.record.image.id)) view.lastUsedFrame = this.frame;
+    }
+  }
+
+  private evictHighResViews(): void {
+    const pinned = new Set([this.selectedId, this.hoveredId].filter((id): id is string => id !== null));
+    for (const [id, view] of [...this.highResViews]) {
+      if (pinned.has(id) || this.highResDesiredIds.has(id)) continue;
+      if (view.record.lastDistance > this.options.highResUnloadDistance) this.disposeHighResView(id, { disposeTexture: true });
+    }
+    const evictionCandidates = [...this.highResViews.values()]
+      .filter((view) => !pinned.has(view.record.image.id) && !this.highResDesiredIds.has(view.record.image.id))
+      .sort((a, b) => a.lastUsedFrame - b.lastUsedFrame);
+    for (const view of evictionCandidates) {
+      if (this.highResViews.size <= this.options.highResMaxTextures) return;
+      this.disposeHighResView(view.record.image.id, { disposeTexture: true });
+    }
+  }
+
+  private highResUrl(record: TextureArrayRecord): string | null {
+    return record.image.fullUrl ?? record.image.url ?? null;
+  }
+
+  private disposeHighResView(id: string, options: { disposeTexture: boolean }): void {
+    const view = this.highResViews.get(id);
+    if (!view) return;
+    this.highResGroup.remove(view.mesh);
+    view.mesh.geometry.dispose();
+    view.mesh.material.dispose();
+    if (options.disposeTexture) this.highResQueue.disposeTexture(id);
+    this.highResViews.delete(id);
+    this.highResDesiredIds.delete(id);
+  }
+
+  private disposeHighResViews(options: { disposeTextures: boolean }): void {
+    for (const id of [...this.highResViews.keys()]) this.disposeHighResView(id, { disposeTexture: options.disposeTextures });
+    this.highResDesiredIds.clear();
+  }
+
   private debugSnapshot(lastUpdateMs: number): NonNullable<ViewerDebugStats['lod']> {
     const records = [...this.records.values()];
     const activeCards = this.desiredRecords.length;
@@ -515,6 +682,10 @@ export class TextureArrayLodManager {
       lastUpdateMs,
       textureArrayReady: this.textureArrayIndex !== null,
       textureArrayPagesLoaded: this.pageViews.size,
+      highResActiveCards: this.highResDesiredIds.size,
+      highResLoadedTextures: this.highResViews.size,
+      highResMaxTextures: this.options.highResMaxTextures,
+      highResQueue: this.highResQueue.getDebugStats(),
       textureQueue: this.textureQueueStats(),
     };
   }
@@ -538,6 +709,10 @@ export class TextureArrayLodManager {
       lastUpdateMs: 0,
       textureArrayReady: false,
       textureArrayPagesLoaded: 0,
+      highResActiveCards: 0,
+      highResLoadedTextures: 0,
+      highResMaxTextures: this.options.highResMaxTextures,
+      highResQueue: this.highResQueue.getDebugStats(),
       textureQueue: this.textureQueueStats(),
     };
   }
@@ -614,6 +789,9 @@ export class TextureArrayLodManager {
   }
 
   private clear(): void {
+    this.disposeHighResViews({ disposeTextures: true });
+    this.highResQueue.dispose();
+    this.highResQueue = new TextureLoadQueue(this.options.highResMaxConcurrentLoads);
     for (const view of this.pageViews.values()) {
       view.mesh.count = 0;
       view.visibleIds.clear();
