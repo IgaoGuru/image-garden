@@ -468,6 +468,7 @@ export class TextureArrayLodManager {
     const recordsByPage = new Map<number, TextureArrayRecord[]>();
     for (const record of this.desiredRecords) {
       if (!record.textureArray || !this.pageViews.has(record.textureArray.page)) continue;
+      if (this.highResViews.has(record.image.id)) continue;
       const pageRecords = recordsByPage.get(record.textureArray.page) ?? [];
       pageRecords.push(record);
       recordsByPage.set(record.textureArray.page, pageRecords);
