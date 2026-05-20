@@ -32,6 +32,7 @@ import {
 } from 'three';
 
 import { TextureLoadQueue } from './loader';
+import { SpatialIndex, spatialCellSize } from './spatial-index';
 import { viewportHeightScaleForCap } from './sprites';
 import type {
   ConstellationImage,
@@ -105,6 +106,7 @@ export class TextureArrayLodManager {
   private readonly boundsSphere = new Sphere();
   private readonly records = new Map<string, TextureArrayRecord>();
   private readonly recordsByPointIndex: TextureArrayRecord[] = [];
+  private spatialIndex: SpatialIndex<TextureArrayRecord> | null = null;
   private readonly pageQueue: number[] = [];
   private readonly pageQueued = new Set<number>();
   private readonly pageLoading = new Set<number>();
@@ -140,6 +142,10 @@ export class TextureArrayLodManager {
       | 'highResUnloadDistance'
       | 'highResMaxTextures'
       | 'highResMaxConcurrentLoads'
+      | 'adaptiveQuality'
+      | 'fastMotionSpeed'
+      | 'fastMotionAngularSpeed'
+      | 'fastMotionSettleSeconds'
     >
   > & {
     selectedColor: number;
@@ -158,6 +164,10 @@ export class TextureArrayLodManager {
     highResUnloadDistance: number;
     highResMaxTextures: number;
     highResMaxConcurrentLoads: number;
+    adaptiveQuality: boolean;
+    fastMotionSpeed: number;
+    fastMotionAngularSpeed: number;
+    fastMotionSettleSeconds: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
@@ -172,9 +182,15 @@ export class TextureArrayLodManager {
   private totalPageLoads = 0;
   private totalPageErrors = 0;
   private desiredRecords: TextureArrayRecord[] = [];
+  private lastCandidateCount = 0;
   private lastVisibleCandidateCount = 0;
   private lastFrustumCulledCount = 0;
   private lastScreenSizeCulledCount = 0;
+  private previousCameraPosition = new Vector3();
+  private previousCameraQuaternion = new Quaternion();
+  private hasPreviousCameraPose = false;
+  private fastMotionSettleElapsed = 0;
+  private movingFast = false;
   private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
@@ -216,6 +232,10 @@ export class TextureArrayLodManager {
       highResUnloadDistance: options.highResUnloadDistance ?? highResDistance * 1.5,
       highResMaxTextures: options.highResMaxTextures ?? 8,
       highResMaxConcurrentLoads: options.highResMaxConcurrentLoads ?? 2,
+      adaptiveQuality: options.adaptiveQuality ?? false,
+      fastMotionSpeed: options.fastMotionSpeed ?? 300,
+      fastMotionAngularSpeed: options.fastMotionAngularSpeed ?? 0.9,
+      fastMotionSettleSeconds: options.fastMotionSettleSeconds ?? 0.35,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
@@ -260,19 +280,26 @@ export class TextureArrayLodManager {
     });
     this.points = new Points(geometry, material);
     this.group.add(this.points);
+    this.spatialIndex = new SpatialIndex(this.records.values(), spatialCellSize(this.options.lazyLoadDistance));
     if (this.textureArrayIndex) this.applyTextureArrayIndex(this.textureArrayIndex);
   }
 
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
     this.frame += 1;
+    this.updateMotionState(camera, deltaSeconds);
     this.updateAccumulator += deltaSeconds;
     this.updateBillboards(camera);
     this.updateHighResMeshes(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
-    if (this.updateAccumulator >= 0.12) {
+    const updateInterval = this.shouldPauseLodWork() ? 0.24 : 0.12;
+    if (this.updateAccumulator >= updateInterval) {
       this.updateAccumulator = 0;
+      if (this.shouldPauseLodWork()) {
+        this.debugStats = this.debugSnapshot(0);
+        return;
+      }
       this.updateCards(camera);
       this.updateHover(camera);
     }
@@ -318,9 +345,7 @@ export class TextureArrayLodManager {
         textureQueue: this.textureQueueStats(),
       };
     }
-    const startedAt = performance.now();
-    for (const record of this.records.values()) record.lastDistance = record.position.distanceTo(camera.position);
-    return this.debugSnapshot(performance.now() - startedAt);
+    return this.debugSnapshot(0);
   }
 
   dispose(): void {
@@ -332,6 +357,44 @@ export class TextureArrayLodManager {
     this.pageViews.clear();
     this.disposeHighResViews({ disposeTextures: false });
     this.highResQueue.dispose();
+  }
+
+  private updateMotionState(camera: PerspectiveCamera, deltaSeconds: number): void {
+    if (!this.options.adaptiveQuality || deltaSeconds <= 0) {
+      this.previousCameraPosition.copy(camera.position);
+      this.previousCameraQuaternion.copy(camera.quaternion);
+      this.hasPreviousCameraPose = true;
+      return;
+    }
+    if (!this.hasPreviousCameraPose) {
+      this.previousCameraPosition.copy(camera.position);
+      this.previousCameraQuaternion.copy(camera.quaternion);
+      this.hasPreviousCameraPose = true;
+      return;
+    }
+
+    const safeDelta = Math.max(deltaSeconds, 1 / 240);
+    const speed = camera.position.distanceTo(this.previousCameraPosition) / safeDelta;
+    const angularSpeed = this.previousCameraQuaternion.angleTo(camera.quaternion) / safeDelta;
+    const enterFast = speed >= this.options.fastMotionSpeed || angularSpeed >= this.options.fastMotionAngularSpeed;
+    const exitFast = speed < this.options.fastMotionSpeed * 0.6 && angularSpeed < this.options.fastMotionAngularSpeed * 0.6;
+
+    if (enterFast) {
+      this.movingFast = true;
+      this.fastMotionSettleElapsed = 0;
+    } else if (this.movingFast && exitFast) {
+      this.fastMotionSettleElapsed += deltaSeconds;
+      if (this.fastMotionSettleElapsed >= this.options.fastMotionSettleSeconds) this.movingFast = false;
+    } else if (this.movingFast) {
+      this.fastMotionSettleElapsed = 0;
+    }
+
+    this.previousCameraPosition.copy(camera.position);
+    this.previousCameraQuaternion.copy(camera.quaternion);
+  }
+
+  private shouldPauseLodWork(): boolean {
+    return this.options.adaptiveQuality && this.movingFast;
   }
 
   private async loadTextureArrayIndex(): Promise<void> {
@@ -358,7 +421,7 @@ export class TextureArrayLodManager {
 
   private updateCards(camera: PerspectiveCamera): void {
     const startedAt = performance.now();
-    const records = [...this.records.values()];
+    const records = this.spatialIndex?.queryRadius(camera.position, this.options.lazyLoadDistance) ?? [...this.records.values()];
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.cameraForward).normalize();
     this.projectionView.multiplyMatrices(this.cullingProjectionMatrix(camera), camera.matrixWorldInverse);
@@ -386,6 +449,7 @@ export class TextureArrayLodManager {
       candidates.push(record);
     }
 
+    this.lastCandidateCount = candidates.length + frustumCulledCount + screenSizeCulledCount;
     this.lastFrustumCulledCount = frustumCulledCount;
     this.lastScreenSizeCulledCount = screenSizeCulledCount;
     this.lastVisibleCandidateCount = candidates.length;
@@ -395,6 +459,7 @@ export class TextureArrayLodManager {
     if (this.selectedId) {
       const selected = this.records.get(this.selectedId);
       if (selected?.textureArray && !this.desiredRecords.some((record) => record.image.id === selected.image.id)) {
+        selected.lastDistance = selected.position.distanceTo(camera.position);
         this.desiredRecords.unshift(selected);
       }
     }
@@ -419,6 +484,7 @@ export class TextureArrayLodManager {
   }
 
   private pumpPageQueue(): void {
+    if (this.shouldPauseLodWork()) return;
     while (this.activePageLoads < this.options.textureArrayPageConcurrency && this.pageQueue.length > 0) {
       const pageIndex = this.pageQueue.shift();
       if (pageIndex === undefined) continue;
@@ -664,21 +730,14 @@ export class TextureArrayLodManager {
   }
 
   private debugSnapshot(lastUpdateMs: number): NonNullable<ViewerDebugStats['lod']> {
-    const records = [...this.records.values()];
     const activeCards = this.desiredRecords.length;
     const loadedCards = [...this.pageViews.values()].reduce((total, view) => total + view.visibleIds.size, 0);
-    const unloaded = records.filter((record) => !this.desiredRecords.some((desired) => desired.image.id === record.image.id));
-    const nearestUnloadedDistance = unloaded.reduce<number | null>(
-      (nearest, record) => (nearest === null ? record.lastDistance : Math.min(nearest, record.lastDistance)),
-      null,
-    );
-    const candidateCount = records.filter((record) => record.lastDistance <= this.options.lazyLoadDistance).length;
     return {
       activeCards,
       loadedCards,
       capacity: Math.max(0, this.options.maxTexturedCards - activeCards),
-      candidateCount,
-      nearestUnloadedDistance,
+      candidateCount: this.lastCandidateCount,
+      nearestUnloadedDistance: null,
       visibleCandidateCount: this.lastVisibleCandidateCount,
       frustumCulledCount: this.lastFrustumCulledCount,
       screenSizeCulledCount: this.lastScreenSizeCulledCount,
@@ -817,9 +876,17 @@ export class TextureArrayLodManager {
     }
     this.records.clear();
     this.recordsByPointIndex.length = 0;
+    this.spatialIndex = null;
     this.selectedId = null;
     this.hoveredId = null;
     this.desiredRecords = [];
+    this.lastCandidateCount = 0;
+    this.lastVisibleCandidateCount = 0;
+    this.lastFrustumCulledCount = 0;
+    this.lastScreenSizeCulledCount = 0;
+    this.hasPreviousCameraPose = false;
+    this.fastMotionSettleElapsed = 0;
+    this.movingFast = false;
   }
 
   private getCardDimensions(image: PositionedImage): [number, number] {

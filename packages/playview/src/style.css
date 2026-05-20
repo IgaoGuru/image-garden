@@ -63,7 +63,7 @@ input[type="range"] { padding: 0; accent-color: #f6f1e8; }
 .menu-panel { width: min(360px, 100%); display: grid; gap: 8px; padding: 18px; border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); }
 .menu-panel button { width: 100%; text-align: left; border-color: transparent; color: rgba(246,241,232,.72); }
 .menu-panel button:hover, .menu-panel button:focus-visible { color: #f6f1e8; border-color: rgba(246,241,232,.26); }
-.layout-panel { width: min(360px, 100%); border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); color: rgba(246,241,232,.7); }
+.layout-panel { width: min(360px, 100%); max-height: min(78vh, 760px); overflow: auto; border: 1px solid rgba(246,241,232,.18); background: rgba(0,0,0,.92); color: rgba(246,241,232,.7); }
 .layout-panel summary { padding: 14px 18px; cursor: pointer; user-select: none; color: rgba(246,241,232,.8); }
 .layout-controls { display: grid; gap: 9px; padding: 0 18px 18px; }
 .layout-controls label { display: flex; justify-content: space-between; gap: 12px; color: rgba(246,241,232,.58); font-size: 11px; }

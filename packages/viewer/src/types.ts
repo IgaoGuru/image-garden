@@ -171,6 +171,14 @@ export interface SpriteOptions {
   atlasIndexUrl?: string;
   atlasPageConcurrency?: number;
   atlasMaxPages?: number;
+  /** Pause new LOD texture work while the camera is moving quickly. Defaults to false. */
+  adaptiveQuality?: boolean;
+  /** World-units per second above which adaptive quality enters fast-flight mode. */
+  fastMotionSpeed?: number;
+  /** Radians per second above which adaptive quality enters fast-flight mode. */
+  fastMotionAngularSpeed?: number;
+  /** Seconds below the exit threshold before leaving fast-flight mode. */
+  fastMotionSettleSeconds?: number;
 }
 
 export interface ImageGardenViewerOptions {

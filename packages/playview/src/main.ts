@@ -48,6 +48,10 @@ interface LayoutTuning {
   frustumCullMargin: number;
   maxTexturedCards: number;
   highResDistance: number;
+  adaptiveQuality: boolean;
+  fastMotionSpeed: number;
+  fastMotionAngularSpeed: number;
+  fastMotionSettleSeconds: number;
   debugLod: boolean;
   frustumCullCards: boolean;
 }
@@ -94,6 +98,13 @@ const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
 const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
 const highResDistanceInput = mustQuery<HTMLInputElement>('#high-res-distance');
 const highResDistanceValue = mustQuery<HTMLOutputElement>('#high-res-distance-value');
+const adaptiveQualityEnabled = mustQuery<HTMLInputElement>('#adaptive-quality-enabled');
+const fastMotionSpeedInput = mustQuery<HTMLInputElement>('#fast-motion-speed');
+const fastMotionSpeedValue = mustQuery<HTMLOutputElement>('#fast-motion-speed-value');
+const fastMotionAngularSpeedInput = mustQuery<HTMLInputElement>('#fast-motion-angular-speed');
+const fastMotionAngularSpeedValue = mustQuery<HTMLOutputElement>('#fast-motion-angular-speed-value');
+const fastMotionSettleSecondsInput = mustQuery<HTMLInputElement>('#fast-motion-settle-seconds');
+const fastMotionSettleSecondsValue = mustQuery<HTMLOutputElement>('#fast-motion-settle-seconds-value');
 const debugLodEnabled = mustQuery<HTMLInputElement>('#debug-lod-enabled');
 const lodFrustumEnabled = mustQuery<HTMLInputElement>('#lod-frustum-enabled');
 const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
@@ -145,6 +156,10 @@ const defaultLayoutTuning: LayoutTuning = {
   frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
   highResDistance: 80,
+  adaptiveQuality: true,
+  fastMotionSpeed: 300,
+  fastMotionAngularSpeed: 0.9,
+  fastMotionSettleSeconds: 0.35,
   debugLod: false,
   frustumCullCards: true,
 };
@@ -210,7 +225,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
   viewerInstance?.destroy();
   viewerInstance = mount(
     root,
-    { images: nextAssets.map((asset) => ({ ...asset, url: asset.fullUrl ?? asset.thumbnailUrl })) },
+    { images: nextAssets.map((asset) => ({ ...asset, url: asset.thumbnailUrl })) },
     {
       backgroundColor: 0x000000,
       sprites: {
@@ -219,7 +234,11 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         textureArrayIndexUrl: '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
         textureArrayPageConcurrency: 4,
         textureArrayMaxPages: 40,
-        highRes: true,
+        highRes: false,
+        adaptiveQuality: layoutTuning.adaptiveQuality,
+        fastMotionSpeed: layoutTuning.fastMotionSpeed,
+        fastMotionAngularSpeed: layoutTuning.fastMotionAngularSpeed,
+        fastMotionSettleSeconds: layoutTuning.fastMotionSettleSeconds,
         debugLod: layoutTuning.debugLod,
         highResDistance: layoutTuning.highResDistance,
         highResScreenHeightPx: 220,
@@ -313,6 +332,10 @@ function setupLayoutControls(): void {
     lodFrustumMarginInput,
     lodMaxCardsInput,
     highResDistanceInput,
+    adaptiveQualityEnabled,
+    fastMotionSpeedInput,
+    fastMotionAngularSpeedInput,
+    fastMotionSettleSecondsInput,
     debugLodEnabled,
     lodFrustumEnabled,
   ]) {
@@ -354,6 +377,10 @@ function readLayoutControls(): LayoutTuning {
     frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
     maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
     highResDistance: numericInput(highResDistanceInput, defaultLayoutTuning.highResDistance),
+    adaptiveQuality: adaptiveQualityEnabled.checked,
+    fastMotionSpeed: numericInput(fastMotionSpeedInput, defaultLayoutTuning.fastMotionSpeed),
+    fastMotionAngularSpeed: numericInput(fastMotionAngularSpeedInput, defaultLayoutTuning.fastMotionAngularSpeed),
+    fastMotionSettleSeconds: numericInput(fastMotionSettleSecondsInput, defaultLayoutTuning.fastMotionSettleSeconds),
     debugLod: debugLodEnabled.checked,
     frustumCullCards: lodFrustumEnabled.checked,
   };
@@ -383,6 +410,13 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
   highResDistanceInput.value = String(tuning.highResDistance);
   highResDistanceValue.value = tuning.highResDistance.toFixed(0);
+  adaptiveQualityEnabled.checked = tuning.adaptiveQuality;
+  fastMotionSpeedInput.value = String(tuning.fastMotionSpeed);
+  fastMotionSpeedValue.value = `${tuning.fastMotionSpeed.toFixed(0)}/s`;
+  fastMotionAngularSpeedInput.value = String(tuning.fastMotionAngularSpeed);
+  fastMotionAngularSpeedValue.value = `${tuning.fastMotionAngularSpeed.toFixed(2)} rad/s`;
+  fastMotionSettleSecondsInput.value = String(tuning.fastMotionSettleSeconds);
+  fastMotionSettleSecondsValue.value = `${tuning.fastMotionSettleSeconds.toFixed(2)}s`;
   debugLodEnabled.checked = tuning.debugLod;
   lodFrustumEnabled.checked = tuning.frustumCullCards;
 }

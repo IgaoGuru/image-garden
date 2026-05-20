@@ -58,6 +58,13 @@
               <input id="lod-max-cards" type="range" min="100" max="12000" step="100" />
               <label for="high-res-distance">full-res LOD distance <output id="high-res-distance-value" for="high-res-distance">80</output></label>
               <input id="high-res-distance" type="range" min="5" max="500" step="5" />
+              <label class="toggle-row"><input id="adaptive-quality-enabled" type="checkbox" /> adaptive quality while flying</label>
+              <label for="fast-motion-speed">fast flight speed <output id="fast-motion-speed-value" for="fast-motion-speed">300/s</output></label>
+              <input id="fast-motion-speed" type="range" min="50" max="1200" step="25" />
+              <label for="fast-motion-angular-speed">fast turn speed <output id="fast-motion-angular-speed-value" for="fast-motion-angular-speed">0.90 rad/s</output></label>
+              <input id="fast-motion-angular-speed" type="range" min="0.1" max="3" step="0.05" />
+              <label for="fast-motion-settle-seconds">settle delay <output id="fast-motion-settle-seconds-value" for="fast-motion-settle-seconds">0.35s</output></label>
+              <input id="fast-motion-settle-seconds" type="range" min="0" max="2" step="0.05" />
               <label class="toggle-row"><input id="debug-lod-enabled" type="checkbox" /> debug LOD overlays</label>
               <label class="toggle-row"><input id="lod-frustum-enabled" type="checkbox" /> frustum cull cards</label>
               <button id="layout-apply" type="button">apply + re-render</button>

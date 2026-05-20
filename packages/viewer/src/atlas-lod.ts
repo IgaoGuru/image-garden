@@ -23,6 +23,7 @@ import {
   Vector3,
 } from 'three';
 
+import { SpatialIndex, spatialCellSize } from './spatial-index';
 import { viewportHeightScaleForCap } from './sprites';
 import type {
   ConstellationImage,
@@ -85,6 +86,7 @@ export class AtlasLodManager {
   private readonly spriteOffset = new Vector3();
   private readonly records = new Map<string, AtlasRecord>();
   private readonly recordsByPointIndex: AtlasRecord[] = [];
+  private spatialIndex: SpatialIndex<AtlasRecord> | null = null;
   private readonly loader = new TextureLoader();
   private readonly pageQueue: number[] = [];
   private readonly pageQueued = new Set<number>();
@@ -115,6 +117,10 @@ export class AtlasLodManager {
       | 'highResMaxTextures'
       | 'highResMaxConcurrentLoads'
       | 'atlasIndexUrl'
+      | 'adaptiveQuality'
+      | 'fastMotionSpeed'
+      | 'fastMotionAngularSpeed'
+      | 'fastMotionSettleSeconds'
     >
   > & {
     selectedColor: number;
@@ -123,6 +129,10 @@ export class AtlasLodManager {
     atlasIndexUrl: string | null;
     atlasPageConcurrency: number;
     atlasMaxPages: number;
+    adaptiveQuality: boolean;
+    fastMotionSpeed: number;
+    fastMotionAngularSpeed: number;
+    fastMotionSettleSeconds: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
@@ -137,6 +147,12 @@ export class AtlasLodManager {
   private totalPageLoads = 0;
   private totalPageErrors = 0;
   private desiredRecords: AtlasRecord[] = [];
+  private lastCandidateCount = 0;
+  private previousCameraPosition = new Vector3();
+  private previousCameraQuaternion = new Quaternion();
+  private hasPreviousCameraPose = false;
+  private fastMotionSettleElapsed = 0;
+  private movingFast = false;
   private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
@@ -168,6 +184,10 @@ export class AtlasLodManager {
       atlasIndexUrl: options.atlasIndexUrl ?? null,
       atlasPageConcurrency: options.atlasPageConcurrency ?? 4,
       atlasMaxPages: options.atlasMaxPages ?? 16,
+      adaptiveQuality: options.adaptiveQuality ?? false,
+      fastMotionSpeed: options.fastMotionSpeed ?? 300,
+      fastMotionAngularSpeed: options.fastMotionAngularSpeed ?? 0.9,
+      fastMotionSettleSeconds: options.fastMotionSettleSeconds ?? 0.35,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
@@ -210,18 +230,25 @@ export class AtlasLodManager {
     });
     this.points = new Points(geometry, material);
     this.group.add(this.points);
+    this.spatialIndex = new SpatialIndex(this.records.values(), spatialCellSize(this.options.lazyLoadDistance));
     if (this.atlasIndex) this.applyAtlasIndex(this.atlasIndex);
   }
 
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
     this.frame += 1;
+    this.updateMotionState(camera, deltaSeconds);
     this.updateAccumulator += deltaSeconds;
     this.updateBillboards(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
-    if (this.updateAccumulator >= 0.12) {
+    const updateInterval = this.shouldPauseLodWork() ? 0.24 : 0.12;
+    if (this.updateAccumulator >= updateInterval) {
       this.updateAccumulator = 0;
+      if (this.shouldPauseLodWork()) {
+        this.debugStats = this.debugSnapshot(0);
+        return;
+      }
       this.updateCards(camera.position, camera.quaternion);
       this.updateHover(camera);
     }
@@ -261,9 +288,7 @@ export class AtlasLodManager {
         textureQueue: this.textureQueueStats(),
       };
     }
-    const startedAt = performance.now();
-    for (const record of this.records.values()) record.lastDistance = record.position.distanceTo(camera.position);
-    return this.debugSnapshot(performance.now() - startedAt);
+    return this.debugSnapshot(0);
   }
 
   dispose(): void {
@@ -273,6 +298,44 @@ export class AtlasLodManager {
     this.scene.remove(this.group);
     for (const view of this.pageViews.values()) view.texture.dispose();
     this.pageViews.clear();
+  }
+
+  private updateMotionState(camera: PerspectiveCamera, deltaSeconds: number): void {
+    if (!this.options.adaptiveQuality || deltaSeconds <= 0) {
+      this.previousCameraPosition.copy(camera.position);
+      this.previousCameraQuaternion.copy(camera.quaternion);
+      this.hasPreviousCameraPose = true;
+      return;
+    }
+    if (!this.hasPreviousCameraPose) {
+      this.previousCameraPosition.copy(camera.position);
+      this.previousCameraQuaternion.copy(camera.quaternion);
+      this.hasPreviousCameraPose = true;
+      return;
+    }
+
+    const safeDelta = Math.max(deltaSeconds, 1 / 240);
+    const speed = camera.position.distanceTo(this.previousCameraPosition) / safeDelta;
+    const angularSpeed = this.previousCameraQuaternion.angleTo(camera.quaternion) / safeDelta;
+    const enterFast = speed >= this.options.fastMotionSpeed || angularSpeed >= this.options.fastMotionAngularSpeed;
+    const exitFast = speed < this.options.fastMotionSpeed * 0.6 && angularSpeed < this.options.fastMotionAngularSpeed * 0.6;
+
+    if (enterFast) {
+      this.movingFast = true;
+      this.fastMotionSettleElapsed = 0;
+    } else if (this.movingFast && exitFast) {
+      this.fastMotionSettleElapsed += deltaSeconds;
+      if (this.fastMotionSettleElapsed >= this.options.fastMotionSettleSeconds) this.movingFast = false;
+    } else if (this.movingFast) {
+      this.fastMotionSettleElapsed = 0;
+    }
+
+    this.previousCameraPosition.copy(camera.position);
+    this.previousCameraQuaternion.copy(camera.quaternion);
+  }
+
+  private shouldPauseLodWork(): boolean {
+    return this.options.adaptiveQuality && this.movingFast;
   }
 
   private async loadAtlasIndex(): Promise<void> {
@@ -299,16 +362,21 @@ export class AtlasLodManager {
 
   private updateCards(cameraPosition: Vector3, cameraQuaternion: Quaternion): void {
     const startedAt = performance.now();
-    const records = [...this.records.values()];
-    for (const record of records) record.lastDistance = record.position.distanceTo(cameraPosition);
+    const records = this.spatialIndex?.queryRadius(cameraPosition, this.options.lazyLoadDistance) ?? [...this.records.values()];
+    const candidates: AtlasRecord[] = [];
+    for (const record of records) {
+      record.lastDistance = record.position.distanceTo(cameraPosition);
+      if (record.atlas && record.lastDistance <= this.options.lazyLoadDistance) candidates.push(record);
+    }
+    this.lastCandidateCount = candidates.length;
 
-    this.desiredRecords = records
-      .filter((record) => record.atlas && record.lastDistance <= this.options.lazyLoadDistance)
+    this.desiredRecords = candidates
       .sort((a, b) => a.lastDistance - b.lastDistance)
       .slice(0, this.options.maxTexturedCards);
     if (this.selectedId) {
       const selected = this.records.get(this.selectedId);
       if (selected?.atlas && !this.desiredRecords.some((record) => record.image.id === selected.image.id)) {
+        selected.lastDistance = selected.position.distanceTo(cameraPosition);
         this.desiredRecords.unshift(selected);
       }
     }
@@ -331,6 +399,7 @@ export class AtlasLodManager {
   }
 
   private pumpPageQueue(): void {
+    if (this.shouldPauseLodWork()) return;
     while (this.activePageLoads < this.options.atlasPageConcurrency && this.pageQueue.length > 0) {
       const pageIndex = this.pageQueue.shift();
       if (pageIndex === undefined) continue;
@@ -436,21 +505,14 @@ export class AtlasLodManager {
   }
 
   private debugSnapshot(lastUpdateMs: number): NonNullable<ViewerDebugStats['lod']> {
-    const records = [...this.records.values()];
     const activeCards = this.desiredRecords.length;
     const loadedCards = [...this.pageViews.values()].reduce((total, view) => total + view.visibleIds.size, 0);
-    const unloaded = records.filter((record) => !this.desiredRecords.some((desired) => desired.image.id === record.image.id));
-    const nearestUnloadedDistance = unloaded.reduce<number | null>(
-      (nearest, record) => (nearest === null ? record.lastDistance : Math.min(nearest, record.lastDistance)),
-      null,
-    );
-    const candidateCount = records.filter((record) => record.lastDistance <= this.options.lazyLoadDistance).length;
     return {
       activeCards,
       loadedCards,
       capacity: Math.max(0, this.options.maxTexturedCards - activeCards),
-      candidateCount,
-      nearestUnloadedDistance,
+      candidateCount: this.lastCandidateCount,
+      nearestUnloadedDistance: null,
       lazyLoadDistance: this.options.lazyLoadDistance,
       textureUnloadDistance: this.options.textureUnloadDistance,
       maxTexturedCards: this.options.maxTexturedCards,
@@ -564,9 +626,14 @@ export class AtlasLodManager {
     }
     this.records.clear();
     this.recordsByPointIndex.length = 0;
+    this.spatialIndex = null;
     this.selectedId = null;
     this.hoveredId = null;
     this.desiredRecords = [];
+    this.lastCandidateCount = 0;
+    this.hasPreviousCameraPose = false;
+    this.fastMotionSettleElapsed = 0;
+    this.movingFast = false;
   }
 
   private getCardDimensions(image: PositionedImage): [number, number] {
