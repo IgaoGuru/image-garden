@@ -126,10 +126,19 @@ def test_sanitize_directory_writes_hashed_jpegs_and_thumbnails(
         record.thumbnail_path
         == tmp_path / "assets" / "thumbs" / f"{record.id}.jpg"
     )
+    assert (
+        record.high_res_thumbnail_path
+        == tmp_path / "assets" / "highres-thumbs" / f"{record.id}.jpg"
+    )
     assert record.url == f"/assets/images/{record.id}.jpg"
     assert record.thumbnail_url == f"/assets/thumbs/{record.id}.jpg"
+    assert (
+        record.high_res_thumbnail_url
+        == f"/assets/highres-thumbs/{record.id}.jpg"
+    )
     assert record.image_path.read_bytes().startswith(b"\xff\xd8")
     assert record.thumbnail_path.read_bytes().startswith(b"\xff\xd8")
+    assert record.high_res_thumbnail_path.read_bytes().startswith(b"\xff\xd8")
     assert warnings[-1] == "Skipped 1 image(s) during ingestion."
 
 
@@ -148,6 +157,7 @@ def test_sanitize_directory_writes_each_result_before_next_prepare(
         if prepared:
             assert prepared[0].record.image_path.is_file()
             assert prepared[0].record.thumbnail_path.is_file()
+            assert prepared[0].record.high_res_thumbnail_path.is_file()
         result = original(path, options=options)
         prepared.append(result)
         return result
@@ -196,6 +206,9 @@ def test_embed_directory_writes_viewer_contract(tmp_path: Path) -> None:
     assert payload["images"][0]["url"].startswith("/assets/images/")
     assert payload["images"][0]["thumbnailUrl"].startswith(
         "/assets/thumbs/",
+    )
+    assert payload["images"][0]["highResThumbnailUrl"].startswith(
+        "/assets/highres-thumbs/",
     )
     assert payload["images"][0]["width"] == 8
     assert payload["images"][0]["height"] == 6
@@ -296,5 +309,7 @@ def test_onnx_preflight_reports_missing_model_file(
         model_path=tmp_path / "missing.onnx",
         provider="auto",
     )
-    with pytest.raises(FileNotFoundError, match="ONNX model file does not exist"):
+    with pytest.raises(
+        FileNotFoundError, match="ONNX model file does not exist"
+    ):
         preflight_embedding_provider(provider)

@@ -252,6 +252,14 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
                 send_body=send_body,
             )
             return
+        if route.startswith("/api/high-res-thumbnails/"):
+            self._send_asset_file(
+                route.removeprefix("/api/high-res-thumbnails/"),
+                thumbnail=True,
+                high_res_thumbnail=True,
+                send_body=send_body,
+            )
+            return
         if route.startswith("/api/files/"):
             self._send_asset_file(
                 route.removeprefix("/api/files/"),
@@ -554,6 +562,7 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
         raw_id: str,
         *,
         thumbnail: bool,
+        high_res_thumbnail: bool = False,
         send_body: bool,
     ) -> None:
         asset_id = unquote(raw_id)
@@ -561,16 +570,18 @@ class BackendRequestHandler(BaseHTTPRequestHandler):
             self.asset_root,
             asset_id,
             thumbnail=thumbnail,
+            high_res_thumbnail=high_res_thumbnail,
         )
         if deterministic_path is not None and deterministic_path.is_file():
             self._send_path_or_404(deterministic_path, send_body=send_body)
             return
 
-        path = (
-            self.store.asset_thumbnail_path(asset_id)
-            if thumbnail
-            else self.store.asset_file_path(asset_id)
-        )
+        if high_res_thumbnail:
+            path = self.store.asset_highres_thumbnail_path(asset_id)
+        elif thumbnail:
+            path = self.store.asset_thumbnail_path(asset_id)
+        else:
+            path = self.store.asset_file_path(asset_id)
         self._send_path_or_404(path, send_body=send_body)
 
     def _send_playview_index(self, *, send_body: bool) -> None:
@@ -686,13 +697,17 @@ def generated_asset_path(
     asset_id: str,
     *,
     thumbnail: bool,
+    high_res_thumbnail: bool = False,
 ) -> Path | None:
     """Return deterministic generated asset path for folder-import hashes."""
     if len(asset_id) != 64 or any(
         char not in "0123456789abcdef" for char in asset_id
     ):
         return None
-    directory = "thumbs" if thumbnail else "images"
+    if high_res_thumbnail:
+        directory = "highres-thumbs"
+    else:
+        directory = "thumbs" if thumbnail else "images"
     return asset_root / directory / f"{asset_id}.jpg"
 
 

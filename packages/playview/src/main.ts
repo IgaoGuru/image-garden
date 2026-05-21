@@ -47,7 +47,7 @@ interface LayoutTuning {
   minCardScreenHeightPx: number;
   frustumCullMargin: number;
   maxTexturedCards: number;
-  highResDistance: number;
+  highResMaxTextures: number;
   debugLod: boolean;
   frustumCullCards: boolean;
 }
@@ -92,8 +92,8 @@ const lodFrustumMarginInput = mustQuery<HTMLInputElement>('#lod-frustum-margin')
 const lodFrustumMarginValue = mustQuery<HTMLOutputElement>('#lod-frustum-margin-value');
 const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
 const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
-const highResDistanceInput = mustQuery<HTMLInputElement>('#high-res-distance');
-const highResDistanceValue = mustQuery<HTMLOutputElement>('#high-res-distance-value');
+const highResCountInput = mustQuery<HTMLInputElement>('#high-res-count');
+const highResCountValue = mustQuery<HTMLOutputElement>('#high-res-count-value');
 const debugLodEnabled = mustQuery<HTMLInputElement>('#debug-lod-enabled');
 const lodFrustumEnabled = mustQuery<HTMLInputElement>('#lod-frustum-enabled');
 const layoutApply = mustQuery<HTMLButtonElement>('#layout-apply');
@@ -144,7 +144,7 @@ const defaultLayoutTuning: LayoutTuning = {
   minCardScreenHeightPx: 20,
   frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
-  highResDistance: 80,
+  highResMaxTextures: 3,
   debugLod: false,
   frustumCullCards: true,
 };
@@ -219,13 +219,13 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         textureArrayIndexUrl: '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
         textureArrayPageConcurrency: 4,
         textureArrayMaxPages: 40,
-        highRes: false,
+        highRes: layoutTuning.highResMaxTextures > 0,
         debugLod: layoutTuning.debugLod,
-        highResDistance: layoutTuning.highResDistance,
-        highResScreenHeightPx: 220,
-        highResUnloadDistance: 140,
-        highResMaxTextures: 8,
-        highResMaxConcurrentLoads: 2,
+        highResDistance: Infinity,
+        highResScreenHeightPx: Infinity,
+        highResUnloadDistance: Infinity,
+        highResMaxTextures: layoutTuning.highResMaxTextures,
+        highResMaxConcurrentLoads: 1,
         atlas: true,
         atlasIndexUrl: '/api/atlas/index.json',
         atlasPageConcurrency: 6,
@@ -312,7 +312,7 @@ function setupLayoutControls(): void {
     lodMinScreenHeightInput,
     lodFrustumMarginInput,
     lodMaxCardsInput,
-    highResDistanceInput,
+    highResCountInput,
     debugLodEnabled,
     lodFrustumEnabled,
   ]) {
@@ -353,7 +353,7 @@ function readLayoutControls(): LayoutTuning {
     minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
     frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
     maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
-    highResDistance: numericInput(highResDistanceInput, defaultLayoutTuning.highResDistance),
+    highResMaxTextures: numericInput(highResCountInput, defaultLayoutTuning.highResMaxTextures),
     debugLod: debugLodEnabled.checked,
     frustumCullCards: lodFrustumEnabled.checked,
   };
@@ -381,8 +381,8 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   lodFrustumMarginValue.value = `${Math.round(tuning.frustumCullMargin * 100)}%`;
   lodMaxCardsInput.value = String(tuning.maxTexturedCards);
   lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
-  highResDistanceInput.value = String(tuning.highResDistance);
-  highResDistanceValue.value = tuning.highResDistance.toFixed(0);
+  highResCountInput.value = String(tuning.highResMaxTextures);
+  highResCountValue.value = tuning.highResMaxTextures.toFixed(0);
   debugLodEnabled.checked = tuning.debugLod;
   lodFrustumEnabled.checked = tuning.frustumCullCards;
 }
@@ -396,7 +396,7 @@ async function rerenderGarden(): Promise<void> {
   await nextFrame();
   rerendering.classList.remove('visible');
   rerendering.setAttribute('aria-hidden', 'true');
-  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · full-res ${layoutTuning.highResDistance.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · high-res ${layoutTuning.highResMaxTextures.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
 }
 
 function numericInput(input: HTMLInputElement, fallback: number): number {

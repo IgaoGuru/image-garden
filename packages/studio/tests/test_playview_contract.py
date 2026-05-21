@@ -64,8 +64,16 @@ def test_playview_studio_api_contract(tmp_path: Path) -> None:
         assert isinstance(asset, dict)
         assert isinstance(asset["id"], str)
         assert asset["thumbnailUrl"].startswith("/api/thumbnails/")
+        assert asset["highResThumbnailUrl"].startswith(
+            "/api/high-res-thumbnails/",
+        )
         assert asset["fullUrl"].startswith("/api/files/")
         assert len(asset["position"]) == 3
+        with urllib.request.urlopen(  # noqa: S310
+            f"{base_url}{asset['highResThumbnailUrl'].lstrip('/')}",
+            timeout=5,
+        ) as response:
+            assert response.read(2) == b"\xff\xd8"
 
         atlas = fetch_json(f"{base_url}api/atlas/index.json")
         assert isinstance(atlas, dict)

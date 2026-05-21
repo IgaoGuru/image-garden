@@ -17,12 +17,14 @@ SqliteValue = str | int | float | None
 
 UPSERT_ASSET_SQL = """
 INSERT INTO assets (
-    id, thumbnail_path, file_path, width, height, x, y, z,
-    metadata_json, source_type, source_id, source_asset_id,
-    stable_key, creation_date, media_type, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    id, thumbnail_path, highres_thumbnail_path, file_path,
+    width, height, x, y, z, metadata_json, source_type,
+    source_id, source_asset_id, stable_key, creation_date, media_type,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 ON CONFLICT(id) DO UPDATE SET
     thumbnail_path = excluded.thumbnail_path,
+    highres_thumbnail_path = excluded.highres_thumbnail_path,
     file_path = excluded.file_path,
     width = excluded.width,
     height = excluded.height,
@@ -46,6 +48,7 @@ class RuntimeAsset(TypedDict):
     id: str
     thumbnailUrl: str
     position: tuple[float, float, float]
+    highResThumbnailUrl: NotRequired[str]
     fullUrl: NotRequired[str]
     width: NotRequired[int]
     height: NotRequired[int]
@@ -77,6 +80,7 @@ class StoredRuntimeAsset:
     thumbnail_path: Path
     file_path: Path
     position: Vec3
+    highres_thumbnail_path: Path | None = None
     width: int | None = None
     height: int | None = None
     metadata: dict[str, object] = field(default_factory=dict)
@@ -114,6 +118,7 @@ class IndexStore:
                 CREATE TABLE IF NOT EXISTS assets (
                     id TEXT PRIMARY KEY,
                     thumbnail_path TEXT NOT NULL,
+                    highres_thumbnail_path TEXT,
                     file_path TEXT NOT NULL,
                     width INTEGER,
                     height INTEGER,
@@ -137,6 +142,7 @@ class IndexStore:
                 );
                 """,
             )
+            ensure_asset_schema(connection)
             self._set_status_value(connection, "state", "idle")
             self._set_status_value(connection, "paused", "false")
             self._set_status_value(connection, "jobPhase", "idle")
@@ -381,6 +387,16 @@ class IndexStore:
             return None
         return Path(row_str(row, "thumbnail_path"))
 
+    def asset_highres_thumbnail_path(self, asset_id: str) -> Path | None:
+        """Return the local high-res thumbnail path for an asset id."""
+        row = self._asset_row(asset_id)
+        if row is None:
+            return None
+        highres_path = optional_str(row, "highres_thumbnail_path")
+        if highres_path is None:
+            return None
+        return Path(highres_path)
+
     def _asset_row(self, asset_id: str) -> sqlite3.Row | None:
         with self._connect() as connection:
             return cast(
@@ -459,6 +475,21 @@ class IndexStore:
             self._asset_count_cache = total
 
 
+def ensure_asset_schema(connection: sqlite3.Connection) -> None:
+    """Migrate assets table columns needed by the current runtime."""
+    columns = {
+        row_str(row, "name")
+        for row in cast(
+            "list[sqlite3.Row]",
+            connection.execute("PRAGMA table_info(assets)").fetchall(),
+        )
+    }
+    if "highres_thumbnail_path" not in columns:
+        _ = connection.execute(
+            "ALTER TABLE assets ADD COLUMN highres_thumbnail_path TEXT"
+        )
+
+
 def asset_rows(
     assets: Sequence[StoredRuntimeAsset],
 ) -> list[tuple[SqliteValue, ...]]:
@@ -474,6 +505,9 @@ def asset_rows(
             (
                 asset.id,
                 str(asset.thumbnail_path),
+                str(asset.highres_thumbnail_path)
+                if asset.highres_thumbnail_path is not None
+                else None,
                 str(asset.file_path),
                 asset.width,
                 asset.height,
@@ -518,6 +552,8 @@ def runtime_asset_from_row(row: sqlite3.Row) -> RuntimeAsset:
         asset["width"] = width
     if height is not None:
         asset["height"] = height
+    if optional_str(row, "highres_thumbnail_path") is not None:
+        asset["highResThumbnailUrl"] = f"/api/high-res-thumbnails/{asset_id}"
     if metadata:
         asset["metadata"] = metadata
     return asset

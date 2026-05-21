@@ -290,7 +290,6 @@ export class TextureArrayLodManager {
       if (record) {
         this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
         if (record.textureArray) this.requestPage(record.textureArray.page);
-        this.requestHighRes(record);
       }
     }
   }
@@ -543,39 +542,15 @@ export class TextureArrayLodManager {
     }
   }
 
-  private updateHighResCandidates(camera: PerspectiveCamera): void {
+  private updateHighResCandidates(_camera: PerspectiveCamera): void {
     this.highResDesiredIds.clear();
     if (!this.options.highRes || this.options.highResMaxTextures <= 0) {
       this.disposeHighResViews({ disposeTextures: true });
       return;
     }
 
-    const pinned = new Set([this.selectedId, this.hoveredId].filter((id): id is string => id !== null));
-    const candidates: TextureArrayRecord[] = [];
-    for (const record of this.desiredRecords) {
-      if (!this.highResUrl(record)) continue;
-      const [, height] = this.getCardDimensions(record.image);
-      const screenHeight = this.screenHeightPx(record, height, camera);
-      if (
-        pinned.has(record.image.id)
-        || record.lastDistance <= this.options.highResDistance
-        || screenHeight >= this.options.highResScreenHeightPx
-      ) {
-        candidates.push(record);
-      }
-    }
-    for (const id of pinned) {
-      const record = this.records.get(id);
-      if (record && this.highResUrl(record) && !candidates.some((candidate) => candidate.image.id === id)) {
-        candidates.unshift(record);
-      }
-    }
-
-    const desired = candidates
-      .sort((a, b) => {
-        const pinnedDelta = Number(pinned.has(b.image.id)) - Number(pinned.has(a.image.id));
-        return pinnedDelta !== 0 ? pinnedDelta : a.lastDistance - b.lastDistance;
-      })
+    const desired = this.desiredRecords
+      .filter((record) => this.highResUrl(record) !== null)
       .slice(0, this.options.highResMaxTextures);
     for (const record of desired) {
       this.highResDesiredIds.add(record.image.id);
@@ -597,7 +572,7 @@ export class TextureArrayLodManager {
 
   private addHighResView(record: TextureArrayRecord, texture: Texture): void {
     if (this.highResViews.has(record.image.id)) return;
-    if (!this.highResDesiredIds.has(record.image.id) && record.image.id !== this.selectedId && record.image.id !== this.hoveredId) {
+    if (!this.highResDesiredIds.has(record.image.id)) {
       this.highResQueue.disposeTexture(record.image.id);
       return;
     }
@@ -632,22 +607,14 @@ export class TextureArrayLodManager {
   }
 
   private evictHighResViews(): void {
-    const pinned = new Set([this.selectedId, this.hoveredId].filter((id): id is string => id !== null));
-    for (const [id, view] of [...this.highResViews]) {
-      if (pinned.has(id) || this.highResDesiredIds.has(id)) continue;
-      if (view.record.lastDistance > this.options.highResUnloadDistance) this.disposeHighResView(id, { disposeTexture: true });
-    }
-    const evictionCandidates = [...this.highResViews.values()]
-      .filter((view) => !pinned.has(view.record.image.id) && !this.highResDesiredIds.has(view.record.image.id))
-      .sort((a, b) => a.lastUsedFrame - b.lastUsedFrame);
-    for (const view of evictionCandidates) {
-      if (this.highResViews.size <= this.options.highResMaxTextures) return;
-      this.disposeHighResView(view.record.image.id, { disposeTexture: true });
+    for (const id of [...this.highResViews.keys()]) {
+      if (this.highResDesiredIds.has(id)) continue;
+      this.disposeHighResView(id, { disposeTexture: true });
     }
   }
 
   private highResUrl(record: TextureArrayRecord): string | null {
-    return record.image.fullUrl ?? record.image.url ?? null;
+    return record.image.highResThumbnailUrl ?? null;
   }
 
   private disposeHighResView(id: string, options: { disposeTexture: boolean }): void {

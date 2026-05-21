@@ -10,6 +10,7 @@ from pathlib import Path
 
 from constellation_studio.assets import (
     DEFAULT_ASSET_URL_PREFIX,
+    DEFAULT_HIGH_RES_THUMBNAIL_SIZE,
     DEFAULT_JPEG_QUALITY,
     DEFAULT_MAX_IMAGE_SIZE,
     DEFAULT_THUMBNAIL_SIZE,
@@ -46,6 +47,7 @@ class EmbedOptions:
     asset_url_prefix: str = DEFAULT_ASSET_URL_PREFIX
     max_image_size: int = DEFAULT_MAX_IMAGE_SIZE
     thumbnail_size: int = DEFAULT_THUMBNAIL_SIZE
+    high_res_thumbnail_size: int = DEFAULT_HIGH_RES_THUMBNAIL_SIZE
     jpeg_quality: int = DEFAULT_JPEG_QUALITY
     batch_size: int = DEFAULT_BATCH_SIZE
     progress: ProgressCallback | None = None
@@ -150,6 +152,7 @@ def embed_directory(
             asset_url_prefix=opts.asset_url_prefix,
             max_image_size=opts.max_image_size,
             thumbnail_size=opts.thumbnail_size,
+            high_res_thumbnail_size=opts.high_res_thumbnail_size,
             jpeg_quality=opts.jpeg_quality,
             skip_errors=opts.skip_errors,
             warn=opts.warn,
@@ -250,6 +253,7 @@ def embedded_image(
         id=record.id,
         url=record.url,
         thumbnail_url=record.thumbnail_url,
+        high_res_thumbnail_url=record.high_res_thumbnail_url,
         embedding=embedding,
         width=record.width,
         height=record.height,
@@ -308,6 +312,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=positive_int,
         default=DEFAULT_THUMBNAIL_SIZE,
         help=f"Thumbnail JPEG long edge in pixels (default: {DEFAULT_THUMBNAIL_SIZE}).",
+    )
+    parser.add_argument(
+        "--high-res-thumbnail-size",
+        type=positive_int,
+        default=DEFAULT_HIGH_RES_THUMBNAIL_SIZE,
+        help=(
+            "High-res thumbnail JPEG long edge in pixels "
+            f"(default: {DEFAULT_HIGH_RES_THUMBNAIL_SIZE})."
+        ),
     )
     parser.add_argument(
         "--jpeg-quality",
@@ -414,6 +427,7 @@ def run(args: argparse.Namespace) -> int:
             asset_url_prefix=str(args.url_prefix),
             max_image_size=int(args.max_image_size),
             thumbnail_size=int(args.thumbnail_size),
+            high_res_thumbnail_size=int(args.high_res_thumbnail_size),
             jpeg_quality=int(args.jpeg_quality),
             batch_size=int(args.batch_size),
             progress=lambda completed, total: print(

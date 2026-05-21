@@ -21,6 +21,7 @@ from constellation_studio.images import discover_image_files, quote_path
 DEFAULT_ASSET_URL_PREFIX = "/assets/"
 DEFAULT_MAX_IMAGE_SIZE = 2048
 DEFAULT_THUMBNAIL_SIZE = 384
+DEFAULT_HIGH_RES_THUMBNAIL_SIZE = 1024
 DEFAULT_JPEG_QUALITY = 90
 DEFAULT_JPEG_OPTIMIZE = False
 DEFAULT_JPEG_PROGRESSIVE = False
@@ -37,6 +38,7 @@ class AssetOptions:
     asset_url_prefix: str = DEFAULT_ASSET_URL_PREFIX
     max_image_size: int = DEFAULT_MAX_IMAGE_SIZE
     thumbnail_size: int = DEFAULT_THUMBNAIL_SIZE
+    high_res_thumbnail_size: int = DEFAULT_HIGH_RES_THUMBNAIL_SIZE
     jpeg_quality: int = DEFAULT_JPEG_QUALITY
     jpeg_optimize: bool = DEFAULT_JPEG_OPTIMIZE
     jpeg_progressive: bool = DEFAULT_JPEG_PROGRESSIVE
@@ -54,8 +56,10 @@ class SanitizedImage:
     source_path: Path
     image_path: Path
     thumbnail_path: Path
+    high_res_thumbnail_path: Path
     url: str
     thumbnail_url: str
+    high_res_thumbnail_url: str
     width: int
     height: int
 
@@ -67,6 +71,7 @@ class PreparedSanitizedImage:
     record: SanitizedImage
     image_bytes: bytes
     thumbnail_bytes: bytes
+    high_res_thumbnail_bytes: bytes
 
 
 def register_heif_opener() -> None:
@@ -111,6 +116,7 @@ def sanitize_directory(
     options.asset_root.mkdir(parents=True, exist_ok=True)
     (options.asset_root / "images").mkdir(exist_ok=True)
     (options.asset_root / "thumbs").mkdir(exist_ok=True)
+    (options.asset_root / "highres-thumbs").mkdir(exist_ok=True)
 
     worker_count = sanitize_worker_count(options, len(paths))
     records, skipped = collect_sanitized_records(
@@ -286,6 +292,9 @@ def prepare_sanitized_image(
     if options.thumbnail_size < 1:
         msg = "thumbnail size must be >= 1"
         raise ValueError(msg)
+    if options.high_res_thumbnail_size < 1:
+        msg = "high-res thumbnail size must be >= 1"
+        raise ValueError(msg)
 
     with Image.open(path) as source:
         _ = source.draft(
@@ -308,19 +317,37 @@ def prepare_sanitized_image(
         optimize=options.jpeg_optimize,
         progressive=options.jpeg_progressive,
     )
+    high_res_thumbnail = resize_copy(
+        canonical, options.high_res_thumbnail_size
+    )
+    high_res_thumbnail_bytes = encode_jpeg(
+        high_res_thumbnail,
+        quality=options.jpeg_quality,
+        optimize=options.jpeg_optimize,
+        progressive=options.jpeg_progressive,
+    )
 
     image_path = options.asset_root / "images" / f"{image_id}.jpg"
     thumbnail_path = options.asset_root / "thumbs" / f"{image_id}.jpg"
+    high_res_thumbnail_path = (
+        options.asset_root / "highres-thumbs" / f"{image_id}.jpg"
+    )
     return PreparedSanitizedImage(
         record=SanitizedImage(
             id=image_id,
             source_path=path.expanduser().resolve(),
             image_path=image_path,
             thumbnail_path=thumbnail_path,
+            high_res_thumbnail_path=high_res_thumbnail_path,
             url=asset_url(options.asset_url_prefix, "images", image_id),
             thumbnail_url=asset_url(
                 options.asset_url_prefix,
                 "thumbs",
+                image_id,
+            ),
+            high_res_thumbnail_url=asset_url(
+                options.asset_url_prefix,
+                "highres-thumbs",
                 image_id,
             ),
             width=canonical.width,
@@ -328,6 +355,7 @@ def prepare_sanitized_image(
         ),
         image_bytes=canonical_bytes,
         thumbnail_bytes=thumbnail_bytes,
+        high_res_thumbnail_bytes=high_res_thumbnail_bytes,
     )
 
 
@@ -336,6 +364,10 @@ def write_prepared_sanitized_image(prepared: PreparedSanitizedImage) -> None:
     record = prepared.record
     write_bytes_if_missing(record.image_path, prepared.image_bytes)
     write_bytes_if_missing(record.thumbnail_path, prepared.thumbnail_bytes)
+    write_bytes_if_missing(
+        record.high_res_thumbnail_path,
+        prepared.high_res_thumbnail_bytes,
+    )
 
 
 def write_bytes_if_missing(path: Path, content: bytes) -> None:

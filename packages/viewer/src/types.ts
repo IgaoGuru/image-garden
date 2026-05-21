@@ -21,6 +21,7 @@ export interface RuntimeAssetMetadata {
 export interface RuntimeAsset {
   id: string;
   thumbnailUrl: string;
+  highResThumbnailUrl?: string;
   fullUrl?: string;
   width?: number;
   height?: number;
@@ -35,6 +36,8 @@ export interface ConstellationImage {
   url?: string;
   /** Smaller image URL preferred for in-scene texture loading. Required for RuntimeAsset. */
   thumbnailUrl?: string;
+  /** Optional higher-quality thumbnail URL used for near-card LOD. */
+  highResThumbnailUrl?: string;
   /** Optional full-resolution image URL for consumers' click/selection UIs. */
   fullUrl?: string;
   /** High-dimensional embedding. Used only as a demo/developer fallback when `position` is not supplied. */

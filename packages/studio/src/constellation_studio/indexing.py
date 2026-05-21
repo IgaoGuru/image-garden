@@ -80,6 +80,7 @@ class StudioDatasetRecord:
     image: ImageJson
     image_path: Path
     thumbnail_path: Path
+    highres_thumbnail_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +204,7 @@ def import_folder(  # noqa: PLR0913
                 id=record.id,
                 thumbnail_path=record.thumbnail_path,
                 file_path=record.image_path,
+                highres_thumbnail_path=record.high_res_thumbnail_path,
                 position=positions[record.id],
                 width=record.width,
                 height=record.height,
@@ -389,6 +391,7 @@ def import_studio_dataset(  # noqa: PLR0913
                 id=image["id"],
                 thumbnail_path=record.thumbnail_path,
                 file_path=record.image_path,
+                highres_thumbnail_path=record.highres_thumbnail_path,
                 position=image_positions[image["id"]],
                 width=image.get("width"),
                 height=image.get("height"),
@@ -473,11 +476,18 @@ def resolve_studio_dataset_records(
         image_path = resolve_studio_asset_path(primary_image_url(image), paths)
         thumbnail_url = image.get("thumbnailUrl", primary_image_url(image))
         thumbnail_path = resolve_studio_asset_path(thumbnail_url, paths)
+        highres_thumbnail_url = image.get("highResThumbnailUrl")
+        highres_thumbnail_path = (
+            resolve_studio_asset_path(highres_thumbnail_url, paths)
+            if highres_thumbnail_url is not None
+            else None
+        )
         records.append(
             StudioDatasetRecord(
                 image=image,
                 image_path=image_path,
                 thumbnail_path=thumbnail_path,
+                highres_thumbnail_path=highres_thumbnail_path,
             )
         )
     return records

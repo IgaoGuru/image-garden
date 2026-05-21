@@ -17,6 +17,7 @@ class ImageJson(TypedDict):
     embedding: NotRequired[list[float]]
     position: NotRequired[list[float]]
     thumbnailUrl: NotRequired[str]
+    highResThumbnailUrl: NotRequired[str]
     fullUrl: NotRequired[str]
     width: NotRequired[int]
     height: NotRequired[int]
@@ -45,6 +46,7 @@ class EmbeddedImage:
     url: str
     embedding: tuple[float, ...]
     thumbnail_url: str | None = None
+    high_res_thumbnail_url: str | None = None
     full_url: str | None = None
     width: int | None = None
     height: int | None = None
@@ -59,6 +61,8 @@ class EmbeddedImage:
         }
         if self.thumbnail_url is not None:
             payload["thumbnailUrl"] = self.thumbnail_url
+        if self.high_res_thumbnail_url is not None:
+            payload["highResThumbnailUrl"] = self.high_res_thumbnail_url
         if self.full_url is not None:
             payload["fullUrl"] = self.full_url
         if self.width is not None:
@@ -232,6 +236,9 @@ def apply_optional_image_fields(
     thumbnail_url = optional_str(source, "thumbnailUrl")
     if thumbnail_url is not None:
         image["thumbnailUrl"] = thumbnail_url
+    high_res_thumbnail_url = optional_str(source, "highResThumbnailUrl")
+    if high_res_thumbnail_url is not None:
+        image["highResThumbnailUrl"] = high_res_thumbnail_url
     full_url = optional_str(source, "fullUrl")
     if full_url is not None:
         image["fullUrl"] = full_url
