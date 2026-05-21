@@ -117,10 +117,6 @@ export class AtlasLodManager {
       | 'highResMaxTextures'
       | 'highResMaxConcurrentLoads'
       | 'atlasIndexUrl'
-      | 'adaptiveQuality'
-      | 'fastMotionSpeed'
-      | 'fastMotionAngularSpeed'
-      | 'fastMotionSettleSeconds'
     >
   > & {
     selectedColor: number;
@@ -129,10 +125,6 @@ export class AtlasLodManager {
     atlasIndexUrl: string | null;
     atlasPageConcurrency: number;
     atlasMaxPages: number;
-    adaptiveQuality: boolean;
-    fastMotionSpeed: number;
-    fastMotionAngularSpeed: number;
-    fastMotionSettleSeconds: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
@@ -148,11 +140,6 @@ export class AtlasLodManager {
   private totalPageErrors = 0;
   private desiredRecords: AtlasRecord[] = [];
   private lastCandidateCount = 0;
-  private previousCameraPosition = new Vector3();
-  private previousCameraQuaternion = new Quaternion();
-  private hasPreviousCameraPose = false;
-  private fastMotionSettleElapsed = 0;
-  private movingFast = false;
   private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
@@ -184,10 +171,6 @@ export class AtlasLodManager {
       atlasIndexUrl: options.atlasIndexUrl ?? null,
       atlasPageConcurrency: options.atlasPageConcurrency ?? 4,
       atlasMaxPages: options.atlasMaxPages ?? 16,
-      adaptiveQuality: options.adaptiveQuality ?? false,
-      fastMotionSpeed: options.fastMotionSpeed ?? 300,
-      fastMotionAngularSpeed: options.fastMotionAngularSpeed ?? 0.9,
-      fastMotionSettleSeconds: options.fastMotionSettleSeconds ?? 0.35,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
@@ -236,19 +219,14 @@ export class AtlasLodManager {
 
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
     this.frame += 1;
-    this.updateMotionState(camera, deltaSeconds);
     this.updateAccumulator += deltaSeconds;
     this.updateBillboards(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
-    const updateInterval = this.shouldPauseLodWork() ? 0.24 : 0.12;
+    const updateInterval = 0.12;
     if (this.updateAccumulator >= updateInterval) {
       this.updateAccumulator = 0;
-      if (this.shouldPauseLodWork()) {
-        this.debugStats = this.debugSnapshot(0);
-        return;
-      }
       this.updateCards(camera.position, camera.quaternion);
       this.updateHover(camera);
     }
@@ -298,44 +276,6 @@ export class AtlasLodManager {
     this.scene.remove(this.group);
     for (const view of this.pageViews.values()) view.texture.dispose();
     this.pageViews.clear();
-  }
-
-  private updateMotionState(camera: PerspectiveCamera, deltaSeconds: number): void {
-    if (!this.options.adaptiveQuality || deltaSeconds <= 0) {
-      this.previousCameraPosition.copy(camera.position);
-      this.previousCameraQuaternion.copy(camera.quaternion);
-      this.hasPreviousCameraPose = true;
-      return;
-    }
-    if (!this.hasPreviousCameraPose) {
-      this.previousCameraPosition.copy(camera.position);
-      this.previousCameraQuaternion.copy(camera.quaternion);
-      this.hasPreviousCameraPose = true;
-      return;
-    }
-
-    const safeDelta = Math.max(deltaSeconds, 1 / 240);
-    const speed = camera.position.distanceTo(this.previousCameraPosition) / safeDelta;
-    const angularSpeed = this.previousCameraQuaternion.angleTo(camera.quaternion) / safeDelta;
-    const enterFast = speed >= this.options.fastMotionSpeed || angularSpeed >= this.options.fastMotionAngularSpeed;
-    const exitFast = speed < this.options.fastMotionSpeed * 0.6 && angularSpeed < this.options.fastMotionAngularSpeed * 0.6;
-
-    if (enterFast) {
-      this.movingFast = true;
-      this.fastMotionSettleElapsed = 0;
-    } else if (this.movingFast && exitFast) {
-      this.fastMotionSettleElapsed += deltaSeconds;
-      if (this.fastMotionSettleElapsed >= this.options.fastMotionSettleSeconds) this.movingFast = false;
-    } else if (this.movingFast) {
-      this.fastMotionSettleElapsed = 0;
-    }
-
-    this.previousCameraPosition.copy(camera.position);
-    this.previousCameraQuaternion.copy(camera.quaternion);
-  }
-
-  private shouldPauseLodWork(): boolean {
-    return this.options.adaptiveQuality && this.movingFast;
   }
 
   private async loadAtlasIndex(): Promise<void> {
@@ -399,7 +339,6 @@ export class AtlasLodManager {
   }
 
   private pumpPageQueue(): void {
-    if (this.shouldPauseLodWork()) return;
     while (this.activePageLoads < this.options.atlasPageConcurrency && this.pageQueue.length > 0) {
       const pageIndex = this.pageQueue.shift();
       if (pageIndex === undefined) continue;
@@ -631,9 +570,6 @@ export class AtlasLodManager {
     this.hoveredId = null;
     this.desiredRecords = [];
     this.lastCandidateCount = 0;
-    this.hasPreviousCameraPose = false;
-    this.fastMotionSettleElapsed = 0;
-    this.movingFast = false;
   }
 
   private getCardDimensions(image: PositionedImage): [number, number] {

@@ -142,10 +142,6 @@ export class TextureArrayLodManager {
       | 'highResUnloadDistance'
       | 'highResMaxTextures'
       | 'highResMaxConcurrentLoads'
-      | 'adaptiveQuality'
-      | 'fastMotionSpeed'
-      | 'fastMotionAngularSpeed'
-      | 'fastMotionSettleSeconds'
     >
   > & {
     selectedColor: number;
@@ -164,10 +160,6 @@ export class TextureArrayLodManager {
     highResUnloadDistance: number;
     highResMaxTextures: number;
     highResMaxConcurrentLoads: number;
-    adaptiveQuality: boolean;
-    fastMotionSpeed: number;
-    fastMotionAngularSpeed: number;
-    fastMotionSettleSeconds: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
@@ -186,11 +178,6 @@ export class TextureArrayLodManager {
   private lastVisibleCandidateCount = 0;
   private lastFrustumCulledCount = 0;
   private lastScreenSizeCulledCount = 0;
-  private previousCameraPosition = new Vector3();
-  private previousCameraQuaternion = new Quaternion();
-  private hasPreviousCameraPose = false;
-  private fastMotionSettleElapsed = 0;
-  private movingFast = false;
   private debugStats: NonNullable<ViewerDebugStats['lod']> | null = null;
 
   constructor(
@@ -232,10 +219,6 @@ export class TextureArrayLodManager {
       highResUnloadDistance: options.highResUnloadDistance ?? highResDistance * 1.5,
       highResMaxTextures: options.highResMaxTextures ?? 8,
       highResMaxConcurrentLoads: options.highResMaxConcurrentLoads ?? 2,
-      adaptiveQuality: options.adaptiveQuality ?? false,
-      fastMotionSpeed: options.fastMotionSpeed ?? 300,
-      fastMotionAngularSpeed: options.fastMotionAngularSpeed ?? 0.9,
-      fastMotionSettleSeconds: options.fastMotionSettleSeconds ?? 0.35,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
@@ -286,20 +269,15 @@ export class TextureArrayLodManager {
 
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
     this.frame += 1;
-    this.updateMotionState(camera, deltaSeconds);
     this.updateAccumulator += deltaSeconds;
     this.updateBillboards(camera);
     this.updateHighResMeshes(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
-    const updateInterval = this.shouldPauseLodWork() ? 0.24 : 0.12;
+    const updateInterval = 0.12;
     if (this.updateAccumulator >= updateInterval) {
       this.updateAccumulator = 0;
-      if (this.shouldPauseLodWork()) {
-        this.debugStats = this.debugSnapshot(0);
-        return;
-      }
       this.updateCards(camera);
       this.updateHover(camera);
     }
@@ -357,44 +335,6 @@ export class TextureArrayLodManager {
     this.pageViews.clear();
     this.disposeHighResViews({ disposeTextures: false });
     this.highResQueue.dispose();
-  }
-
-  private updateMotionState(camera: PerspectiveCamera, deltaSeconds: number): void {
-    if (!this.options.adaptiveQuality || deltaSeconds <= 0) {
-      this.previousCameraPosition.copy(camera.position);
-      this.previousCameraQuaternion.copy(camera.quaternion);
-      this.hasPreviousCameraPose = true;
-      return;
-    }
-    if (!this.hasPreviousCameraPose) {
-      this.previousCameraPosition.copy(camera.position);
-      this.previousCameraQuaternion.copy(camera.quaternion);
-      this.hasPreviousCameraPose = true;
-      return;
-    }
-
-    const safeDelta = Math.max(deltaSeconds, 1 / 240);
-    const speed = camera.position.distanceTo(this.previousCameraPosition) / safeDelta;
-    const angularSpeed = this.previousCameraQuaternion.angleTo(camera.quaternion) / safeDelta;
-    const enterFast = speed >= this.options.fastMotionSpeed || angularSpeed >= this.options.fastMotionAngularSpeed;
-    const exitFast = speed < this.options.fastMotionSpeed * 0.6 && angularSpeed < this.options.fastMotionAngularSpeed * 0.6;
-
-    if (enterFast) {
-      this.movingFast = true;
-      this.fastMotionSettleElapsed = 0;
-    } else if (this.movingFast && exitFast) {
-      this.fastMotionSettleElapsed += deltaSeconds;
-      if (this.fastMotionSettleElapsed >= this.options.fastMotionSettleSeconds) this.movingFast = false;
-    } else if (this.movingFast) {
-      this.fastMotionSettleElapsed = 0;
-    }
-
-    this.previousCameraPosition.copy(camera.position);
-    this.previousCameraQuaternion.copy(camera.quaternion);
-  }
-
-  private shouldPauseLodWork(): boolean {
-    return this.options.adaptiveQuality && this.movingFast;
   }
 
   private async loadTextureArrayIndex(): Promise<void> {
@@ -484,7 +424,6 @@ export class TextureArrayLodManager {
   }
 
   private pumpPageQueue(): void {
-    if (this.shouldPauseLodWork()) return;
     while (this.activePageLoads < this.options.textureArrayPageConcurrency && this.pageQueue.length > 0) {
       const pageIndex = this.pageQueue.shift();
       if (pageIndex === undefined) continue;
@@ -884,9 +823,6 @@ export class TextureArrayLodManager {
     this.lastVisibleCandidateCount = 0;
     this.lastFrustumCulledCount = 0;
     this.lastScreenSizeCulledCount = 0;
-    this.hasPreviousCameraPose = false;
-    this.fastMotionSettleElapsed = 0;
-    this.movingFast = false;
   }
 
   private getCardDimensions(image: PositionedImage): [number, number] {

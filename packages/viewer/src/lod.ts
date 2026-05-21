@@ -73,10 +73,6 @@ export class PointLodManager {
       | 'atlasIndexUrl'
       | 'atlasPageConcurrency'
       | 'atlasMaxPages'
-      | 'adaptiveQuality'
-      | 'fastMotionSpeed'
-      | 'fastMotionAngularSpeed'
-      | 'fastMotionSettleSeconds'
     >
   > & {
     selectedColor: number;
