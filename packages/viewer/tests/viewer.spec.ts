@@ -127,6 +127,35 @@ test('near sprites shrink to stay below maximum viewport height', async ({ page 
   expect(consoleErrors).toEqual([]);
 });
 
+test('data-source adapters preserve high-res thumbnail URLs', async ({ page }) => {
+  await page.goto('/tests/fixture.html');
+  const result = await page.evaluate(async () => {
+    const { createStaticDataSource, imageToRuntimeAsset, runtimeAssetsToData } = await import('/src/index.ts');
+    const asset = {
+      id: 'one',
+      thumbnailUrl: '/thumb.jpg',
+      highResThumbnailUrl: '/highres.jpg',
+      fullUrl: '/full.jpg',
+      position: [1, 2, 3] as [number, number, number],
+    };
+    const data = runtimeAssetsToData([asset]);
+    const runtimeAsset = imageToRuntimeAsset(data.images[0]!);
+    const source = createStaticDataSource(data);
+    const initialAssets = await source.getInitialAssets();
+    return {
+      dataHighResUrl: data.images[0]?.highResThumbnailUrl,
+      runtimeHighResUrl: runtimeAsset.highResThumbnailUrl,
+      staticHighResUrl: initialAssets[0]?.highResThumbnailUrl,
+    };
+  });
+
+  expect(result).toEqual({
+    dataHighResUrl: '/highres.jpg',
+    runtimeHighResUrl: '/highres.jpg',
+    staticHighResUrl: '/highres.jpg',
+  });
+});
+
 test('fetch data source supports explicit backend endpoint adapters', async ({ page }) => {
   await page.goto('/tests/fixture.html');
   const result = await page.evaluate(async () => {
@@ -152,9 +181,9 @@ test('fetch data source supports explicit backend endpoint adapters', async ({ p
           return new Response(JSON.stringify({ assets: [] }), { status: 200 });
         }
         if (url.includes('asset/')) {
-          return new Response(JSON.stringify({ id: 'one', thumbnailUrl: '/thumb.jpg', position: [1, 2, 3] }), { status: 200 });
+          return new Response(JSON.stringify({ id: 'one', thumbnailUrl: '/thumb.jpg', highResThumbnailUrl: '/highres.jpg', position: [1, 2, 3] }), { status: 200 });
         }
-        return new Response(JSON.stringify({ assets: [{ id: 'one', thumbnailUrl: '/thumb.jpg', position: [1, 2, 3] }] }), { status: 200 });
+        return new Response(JSON.stringify({ assets: [{ id: 'one', thumbnailUrl: '/thumb.jpg', highResThumbnailUrl: '/highres.jpg', position: [1, 2, 3] }] }), { status: 200 });
       },
     });
     const status = await source.getStatus();
@@ -166,8 +195,10 @@ test('fetch data source supports explicit backend endpoint adapters', async ({ p
 
   expect(result.status.state).toBe('ready');
   expect(result.assets).toHaveLength(1);
+  expect(result.assets[0]?.highResThumbnailUrl).toBe('/highres.jpg');
   expect(result.near).toEqual([]);
   expect(result.asset?.id).toBe('one');
+  expect(result.asset?.highResThumbnailUrl).toBe('/highres.jpg');
   expect(result.requests).toEqual([
     'https://example.test/root/status.json',
     'https://example.test/root/assets.json?limit=2&offset=4',

@@ -45,6 +45,7 @@ export function runtimeAssetsToData(assets: readonly RuntimeAsset[]): Constellat
       id: asset.id,
       url: asset.fullUrl ?? asset.thumbnailUrl,
       thumbnailUrl: asset.thumbnailUrl,
+      highResThumbnailUrl: asset.highResThumbnailUrl,
       fullUrl: asset.fullUrl,
       width: asset.width,
       height: asset.height,
@@ -66,6 +67,7 @@ export function imageToRuntimeAsset(image: ConstellationImage): RuntimeAsset {
   return {
     id: image.id,
     thumbnailUrl,
+    highResThumbnailUrl: image.highResThumbnailUrl,
     fullUrl: image.fullUrl ?? image.url,
     width: image.width,
     height: image.height,
@@ -254,6 +256,7 @@ function parseAsset(value: unknown): RuntimeAsset {
   return {
     id,
     thumbnailUrl,
+    highResThumbnailUrl: typeof object.highResThumbnailUrl === 'string' ? object.highResThumbnailUrl : undefined,
     fullUrl: typeof object.fullUrl === 'string' ? object.fullUrl : typeof object.url === 'string' ? object.url : undefined,
     width: optionalNumber(object.width),
     height: optionalNumber(object.height),
