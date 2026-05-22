@@ -161,14 +161,32 @@ window.setInterval(() => {
   renderProgressLog();
 }, 140);
 
+// Static hosting mode config (set at build time via VITE_* env vars)
+const STATIC_MODE = import.meta.env.VITE_STATIC_MODE === 'true';
+const STATIC_ASSETS_URL = import.meta.env.VITE_STATIC_ASSETS_URL as string | undefined;
+const STATIC_STATUS_URL = import.meta.env.VITE_STATIC_STATUS_URL as string | undefined;
+const STATIC_TEXTURE_ARRAY_URL = import.meta.env.VITE_STATIC_TEXTURE_ARRAY_URL as string | undefined;
+const STATIC_ATLAS_URL = import.meta.env.VITE_STATIC_ATLAS_URL as string | undefined;
+
 void boot();
 
 async function boot(): Promise<void> {
   try {
-    const [loadedAssets, initialStatus] = await Promise.all([
-      fetchAllAssets(),
-      fetchJson<ApiStatus>('/api/status').catch(() => null),
-    ]);
+    let loadedAssets: RuntimeAsset[];
+    let initialStatus: ApiStatus | null;
+
+    if (STATIC_MODE && STATIC_ASSETS_URL) {
+      loadedAssets = await fetchStaticAssets();
+      initialStatus = STATIC_STATUS_URL
+        ? await fetchJson<ApiStatus>(STATIC_STATUS_URL).catch(() => null)
+        : null;
+    } else {
+      [loadedAssets, initialStatus] = await Promise.all([
+        fetchAllAssets(),
+        fetchJson<ApiStatus>('/api/status').catch(() => null),
+      ]);
+    }
+
     if (initialStatus) assertCompatibleStudioStatus(initialStatus);
     assets = loadedAssets;
     latestStatus = initialStatus;
@@ -185,6 +203,11 @@ async function boot(): Promise<void> {
     status.textContent = `startup failed: ${errorMessage(error)}`;
     showOnboarding();
   }
+}
+
+async function fetchStaticAssets(): Promise<RuntimeAsset[]> {
+  const payload = await fetchJson<AssetPage>(STATIC_ASSETS_URL!);
+  return payload.assets ?? [];
 }
 
 async function fetchAllAssets(): Promise<RuntimeAsset[]> {
@@ -216,7 +239,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
       sprites: {
         renderMode: 'auto',
         textureArray: true,
-        textureArrayIndexUrl: '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
+        textureArrayIndexUrl: STATIC_TEXTURE_ARRAY_URL ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
         textureArrayPageConcurrency: 4,
         textureArrayMaxPages: 40,
         highRes: layoutTuning.highResMaxTextures > 0,
@@ -227,7 +250,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         highResMaxTextures: layoutTuning.highResMaxTextures,
         highResMaxConcurrentLoads: 1,
         atlas: true,
-        atlasIndexUrl: '/api/atlas/index.json',
+        atlasIndexUrl: STATIC_ATLAS_URL ?? '/api/atlas/index.json',
         atlasPageConcurrency: 6,
         atlasMaxPages: 24,
         lazyLoadDistance: layoutTuning.lazyLoadDistance,
