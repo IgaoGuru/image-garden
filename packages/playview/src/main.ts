@@ -147,7 +147,7 @@ const defaultLayoutTuning: LayoutTuning = {
   minCardScreenHeightPx: 20,
   frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
-  maxSelectionDistance: 250,
+  maxSelectionDistance: 30,
   highResMaxTextures: 3,
   debugLod: false,
   frustumCullCards: true,

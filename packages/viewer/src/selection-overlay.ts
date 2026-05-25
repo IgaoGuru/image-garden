@@ -16,15 +16,15 @@ import {
 
 import type { PositionedImage } from './types';
 
-const panelCanvasWidth = 1024;
+const panelCanvasWidth = 660;
 const panelCanvasHeight = 640;
-const panelPadding = 40;
-const panelFooterHeight = 78;
+const panelPadding = 32;
+const panelFooterHeight = 72;
 const selectionStrokeColor = '#ffffff';
 const panelStrokeWidth = 2;
-const bodyFontSize = 24;
-const bodyLineHeight = 30;
-const footerFontSize = 21;
+const bodyFontSize = 21;
+const bodyLineHeight = 27;
+const footerFontSize = 18;
 
 export class SelectionInfoOverlay {
   readonly object = new Group();
