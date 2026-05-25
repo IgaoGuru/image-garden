@@ -21,7 +21,6 @@ const panelCanvasHeight = 640;
 const panelPadding = 32;
 const panelFooterHeight = 72;
 const selectionStrokeColor = '#ffffff';
-const panelStrokeWidth = 2;
 const bodyFontSize = 21;
 const bodyLineHeight = 27;
 const footerFontSize = 18;
@@ -32,6 +31,7 @@ export class SelectionInfoOverlay {
   private readonly cameraForward = new Vector3();
   private selectedImage: PositionedImage | null = null;
   private border: Line<BufferGeometry, LineBasicMaterial> | null = null;
+  private panelBorder: Line<BufferGeometry, LineBasicMaterial> | null = null;
   private panel: Mesh<PlaneGeometry, MeshBasicMaterial> | null = null;
   private panelTexture: CanvasTexture | null = null;
 
@@ -46,7 +46,7 @@ export class SelectionInfoOverlay {
   }
 
   update(camera: PerspectiveCamera, position: Vector3, cardWidth: number, cardHeight: number): void {
-    if (!this.selectedImage || !this.border || !this.panel) return;
+    if (!this.selectedImage || !this.border || !this.panelBorder || !this.panel) return;
 
     camera.updateMatrixWorld(true);
     camera.getWorldDirection(this.cameraForward).normalize();
@@ -62,8 +62,11 @@ export class SelectionInfoOverlay {
     const panelHeight = Math.max(cardHeight * 1.05, 7.5);
     const panelWidth = panelHeight * 1.03;
     const gap = Math.max(cardHeight * 0.22, 1.8);
-    this.panel.position.set((cardWidth / 2) + gap + (panelWidth / 2), 0, 0.05);
+    const panelX = (cardWidth / 2) + gap + (panelWidth / 2);
+    this.panel.position.set(panelX, 0, 0.05);
     this.panel.scale.set(panelWidth, panelHeight, 1);
+    this.panelBorder.position.set(panelX, 0, 0.06);
+    this.panelBorder.scale.set(panelWidth, panelHeight, 1);
   }
 
   dispose(): void {
@@ -78,6 +81,7 @@ export class SelectionInfoOverlay {
     }
 
     this.border = createBorder();
+    this.panelBorder = createBorder();
     this.panelTexture = createInfoPanelTexture(this.selectedImage);
     this.panel = new Mesh(
       new PlaneGeometry(1, 1),
@@ -92,6 +96,7 @@ export class SelectionInfoOverlay {
     this.panel.renderOrder = 41;
     this.object.add(this.border);
     this.object.add(this.panel);
+    this.object.add(this.panelBorder);
     this.object.visible = true;
   }
 
@@ -101,6 +106,12 @@ export class SelectionInfoOverlay {
       this.border.geometry.dispose();
       this.border.material.dispose();
       this.border = null;
+    }
+    if (this.panelBorder) {
+      this.object.remove(this.panelBorder);
+      this.panelBorder.geometry.dispose();
+      this.panelBorder.material.dispose();
+      this.panelBorder = null;
     }
     if (this.panel) {
       this.object.remove(this.panel);
@@ -149,10 +160,6 @@ function createInfoPanelTexture(image: PositionedImage): CanvasTexture {
   context.clearRect(0, 0, panelCanvasWidth, panelCanvasHeight);
   context.fillStyle = 'rgba(2, 2, 4, 0.88)';
   context.fillRect(0, 0, panelCanvasWidth, panelCanvasHeight);
-  context.strokeStyle = selectionStrokeColor;
-  context.lineWidth = panelStrokeWidth;
-  const strokeInset = panelStrokeWidth / 2;
-  context.strokeRect(strokeInset, strokeInset, panelCanvasWidth - panelStrokeWidth, panelCanvasHeight - panelStrokeWidth);
 
   context.fillStyle = selectionStrokeColor;
   context.textBaseline = 'top';
