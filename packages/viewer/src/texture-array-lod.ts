@@ -127,6 +127,7 @@ export class TextureArrayLodManager {
       | 'selectedColor'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'maxSelectionDistance'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
       | 'frustumCullMargin'
@@ -150,6 +151,7 @@ export class TextureArrayLodManager {
     selectedColor: number;
     textureUnloadDistance: number;
     pointColor: number;
+    maxSelectionDistance: number;
     minCardScreenHeightPx: number;
     frustumCullCards: boolean;
     frustumCullMargin: number;
@@ -209,6 +211,7 @@ export class TextureArrayLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
+      maxSelectionDistance: options.maxSelectionDistance ?? Infinity,
       minCardScreenHeightPx: options.minCardScreenHeightPx ?? 0,
       frustumCullCards: options.frustumCullCards ?? true,
       frustumCullMargin: options.frustumCullMargin ?? 0.1,
@@ -778,10 +781,15 @@ export class TextureArrayLodManager {
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
-    if (image) {
-      this.setSelected(image.id);
-      this.onSelect?.(image);
+    if (!image) return;
+    if (image.id === this.selectedId) {
+      this.setSelected(null);
+      return;
     }
+    const record = this.records.get(image.id);
+    if (!record || record.position.distanceTo(camera.position) > this.options.maxSelectionDistance) return;
+    this.setSelected(image.id);
+    this.onSelect?.(image);
   }
 
   private clear(): void {

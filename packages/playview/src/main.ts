@@ -47,6 +47,7 @@ interface LayoutTuning {
   minCardScreenHeightPx: number;
   frustumCullMargin: number;
   maxTexturedCards: number;
+  maxSelectionDistance: number;
   highResMaxTextures: number;
   debugLod: boolean;
   frustumCullCards: boolean;
@@ -92,6 +93,8 @@ const lodFrustumMarginInput = mustQuery<HTMLInputElement>('#lod-frustum-margin')
 const lodFrustumMarginValue = mustQuery<HTMLOutputElement>('#lod-frustum-margin-value');
 const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
 const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
+const selectionDistanceInput = mustQuery<HTMLInputElement>('#selection-distance');
+const selectionDistanceValue = mustQuery<HTMLOutputElement>('#selection-distance-value');
 const highResCountInput = mustQuery<HTMLInputElement>('#high-res-count');
 const highResCountValue = mustQuery<HTMLOutputElement>('#high-res-count-value');
 const debugLodEnabled = mustQuery<HTMLInputElement>('#debug-lod-enabled');
@@ -144,6 +147,7 @@ const defaultLayoutTuning: LayoutTuning = {
   minCardScreenHeightPx: 20,
   frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
+  maxSelectionDistance: 250,
   highResMaxTextures: 3,
   debugLod: false,
   frustumCullCards: true,
@@ -282,6 +286,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         textureUnloadDistance: layoutTuning.textureUnloadDistance,
         maxTexturedCards: layoutTuning.maxTexturedCards,
         maxLoadedTextures: layoutTuning.maxTexturedCards,
+        maxSelectionDistance: layoutTuning.maxSelectionDistance,
         minCardScreenHeightPx: layoutTuning.minCardScreenHeightPx,
         frustumCullCards: layoutTuning.frustumCullCards,
         frustumCullMargin: layoutTuning.frustumCullMargin,
@@ -360,6 +365,7 @@ function setupLayoutControls(): void {
     lodMinScreenHeightInput,
     lodFrustumMarginInput,
     lodMaxCardsInput,
+    selectionDistanceInput,
     highResCountInput,
     debugLodEnabled,
     lodFrustumEnabled,
@@ -401,6 +407,7 @@ function readLayoutControls(): LayoutTuning {
     minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
     frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
     maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
+    maxSelectionDistance: numericInput(selectionDistanceInput, defaultLayoutTuning.maxSelectionDistance),
     highResMaxTextures: numericInput(highResCountInput, defaultLayoutTuning.highResMaxTextures),
     debugLod: debugLodEnabled.checked,
     frustumCullCards: lodFrustumEnabled.checked,
@@ -429,6 +436,8 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   lodFrustumMarginValue.value = `${Math.round(tuning.frustumCullMargin * 100)}%`;
   lodMaxCardsInput.value = String(tuning.maxTexturedCards);
   lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
+  selectionDistanceInput.value = String(tuning.maxSelectionDistance);
+  selectionDistanceValue.value = tuning.maxSelectionDistance.toFixed(0);
   highResCountInput.value = String(tuning.highResMaxTextures);
   highResCountValue.value = tuning.highResMaxTextures.toFixed(0);
   debugLodEnabled.checked = tuning.debugLod;
@@ -444,7 +453,7 @@ async function rerenderGarden(): Promise<void> {
   await nextFrame();
   rerendering.classList.remove('visible');
   rerendering.setAttribute('aria-hidden', 'true');
-  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · high-res ${layoutTuning.highResMaxTextures.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · select ${layoutTuning.maxSelectionDistance.toFixed(0)} · high-res ${layoutTuning.highResMaxTextures.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
 }
 
 function numericInput(input: HTMLInputElement, fallback: number): number {

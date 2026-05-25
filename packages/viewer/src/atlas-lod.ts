@@ -102,6 +102,7 @@ export class AtlasLodManager {
       | 'selectedColor'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'maxSelectionDistance'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
       | 'frustumCullMargin'
@@ -122,6 +123,7 @@ export class AtlasLodManager {
     selectedColor: number;
     textureUnloadDistance: number;
     pointColor: number;
+    maxSelectionDistance: number;
     atlasIndexUrl: string | null;
     atlasPageConcurrency: number;
     atlasMaxPages: number;
@@ -167,6 +169,7 @@ export class AtlasLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
+      maxSelectionDistance: options.maxSelectionDistance ?? Infinity,
       atlas: options.atlas ?? false,
       atlasIndexUrl: options.atlasIndexUrl ?? null,
       atlasPageConcurrency: options.atlasPageConcurrency ?? 4,
@@ -545,10 +548,15 @@ export class AtlasLodManager {
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
-    if (image) {
-      this.setSelected(image.id);
-      this.onSelect?.(image);
+    if (!image) return;
+    if (image.id === this.selectedId) {
+      this.setSelected(null);
+      return;
     }
+    const record = this.records.get(image.id);
+    if (!record || record.position.distanceTo(camera.position) > this.options.maxSelectionDistance) return;
+    this.setSelected(image.id);
+    this.onSelect?.(image);
   }
 
   private clear(): void {

@@ -139,6 +139,8 @@ export interface SpriteOptions {
   pointOpacity?: number;
   /** World-space raycast radius for LOD point picking. */
   pointPickRadius?: number;
+  /** Maximum camera-to-image world distance that can be selected by click. Defaults to Infinity. */
+  maxSelectionDistance?: number;
   /** Promote only cards at least this tall on screen; smaller/farther images stay as points. Defaults to 0. */
   minCardScreenHeightPx?: number;
   /** Skip textured-card promotion for records outside the camera frustum. Defaults to true. */
