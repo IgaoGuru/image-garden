@@ -26,6 +26,7 @@ import {
   RGBAFormat,
   SRGBColorSpace,
   Texture,
+  TextureLoader,
   UnsignedByteType,
   Vector2,
   Vector3,
@@ -119,6 +120,7 @@ export class TextureArrayLodManager {
   private readonly pageLoading = new Set<number>();
   private readonly pageViews = new Map<number, TextureArrayPageView>();
   private readonly pageByIndex = new Map<number, TextureArrayIndexPage>();
+  private readonly focusLoader = new TextureLoader();
   private readonly highResViews = new Map<string, HighResView>();
   private readonly highResDesiredIds = new Set<string>();
   private highResQueue: TextureLoadQueue;
@@ -186,6 +188,8 @@ export class TextureArrayLodManager {
   private totalPageErrors = 0;
   private desiredRecords: TextureArrayRecord[] = [];
   private focusRecord: TextureArrayRecord | null = null;
+  private focusLoadId: string | null = null;
+  private focusLoadToken = 0;
   private lastCandidateCount = 0;
   private lastVisibleCandidateCount = 0;
   private lastFrustumCulledCount = 0;
@@ -236,6 +240,7 @@ export class TextureArrayLodManager {
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
     this.highResQueue = new TextureLoadQueue(this.options.highResMaxConcurrentLoads);
+    this.focusLoader.setCrossOrigin('anonymous');
     this.debugStats = this.emptyDebugStats();
     this.raycaster.params.Points = { threshold: this.options.pointPickRadius };
     this.group.add(this.cardGroup);
@@ -429,6 +434,7 @@ export class TextureArrayLodManager {
     for (const record of this.desiredRecords) {
       if (record.textureArray) this.requestPage(record.textureArray.page, record.image.id === this.focusRecord?.image.id);
     }
+    if (this.focusRecord) this.requestFocusedTextureNow(this.focusRecord);
     this.updateHighResCandidates(camera);
     this.evictUnusedPages();
     this.rebuildPageInstances(camera.quaternion);
@@ -615,9 +621,12 @@ export class TextureArrayLodManager {
     });
   }
 
-  private addHighResView(record: TextureArrayRecord, texture: Texture): void {
-    if (this.highResViews.has(record.image.id)) return;
-    if (!this.highResDesiredIds.has(record.image.id)) {
+  private addHighResView(record: TextureArrayRecord, texture: Texture, force = false): void {
+    if (this.highResViews.has(record.image.id)) {
+      if (force) texture.dispose();
+      return;
+    }
+    if (!force && !this.highResDesiredIds.has(record.image.id)) {
       this.highResQueue.disposeTexture(record.image.id);
       return;
     }
@@ -658,8 +667,40 @@ export class TextureArrayLodManager {
     }
   }
 
+  private requestFocusedTextureNow(record: TextureArrayRecord): void {
+    if (this.highResViews.has(record.image.id) || this.focusLoadId === record.image.id) return;
+    const url = this.focusTextureUrl(record);
+    if (!url) return;
+
+    const loadId = record.image.id;
+    const token = this.focusLoadToken + 1;
+    this.focusLoadToken = token;
+    this.focusLoadId = loadId;
+    this.focusLoader.load(
+      url,
+      (texture) => {
+        if (this.focusLoadToken !== token || this.focusRecord?.image.id !== loadId) {
+          texture.dispose();
+          if (this.focusLoadId === loadId) this.focusLoadId = null;
+          return;
+        }
+        this.highResDesiredIds.add(loadId);
+        this.addHighResView(record, texture, true);
+        if (this.focusLoadId === loadId) this.focusLoadId = null;
+      },
+      undefined,
+      () => {
+        if (this.focusLoadId === loadId) this.focusLoadId = null;
+      },
+    );
+  }
+
   private highResUrl(record: TextureArrayRecord): string | null {
     return record.image.highResThumbnailUrl ?? null;
+  }
+
+  private focusTextureUrl(record: TextureArrayRecord): string | null {
+    return record.image.highResThumbnailUrl ?? record.image.thumbnailUrl ?? record.image.url ?? null;
   }
 
   private disposeHighResView(id: string, options: { disposeTexture: boolean }): void {
@@ -887,6 +928,8 @@ export class TextureArrayLodManager {
     this.hoveredId = null;
     this.desiredRecords = [];
     this.focusRecord = null;
+    this.focusLoadId = null;
+    this.focusLoadToken += 1;
     this.lastCandidateCount = 0;
     this.lastVisibleCandidateCount = 0;
     this.lastFrustumCulledCount = 0;
