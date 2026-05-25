@@ -237,7 +237,7 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
     {
       backgroundColor: 0x000000,
       sprites: {
-        renderMode: 'auto',
+        renderMode: 'lod',
         textureArray: true,
         textureArrayIndexUrl: STATIC_TEXTURE_ARRAY_URL ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
         textureArrayPageConcurrency: 4,

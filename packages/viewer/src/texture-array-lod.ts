@@ -32,6 +32,7 @@ import {
 } from 'three';
 
 import { TextureLoadQueue } from './loader';
+import { SelectionInfoOverlay } from './selection-overlay';
 import { SpatialIndex, spatialCellSize } from './spatial-index';
 import { viewportHeightScaleForCap } from './sprites';
 import type {
@@ -77,6 +78,7 @@ interface TextureArrayPageView {
   mesh: InstancedMesh<PlaneGeometry, ShaderMaterial>;
   layer: InstancedBufferAttribute;
   visibleIds: Set<string>;
+  visibleRecords: TextureArrayRecord[];
   lastUsedFrame: number;
 }
 
@@ -96,6 +98,7 @@ export class TextureArrayLodManager {
   private readonly group = new Group();
   private readonly cardGroup = new Group();
   private readonly highResGroup = new Group();
+  private readonly selectionOverlay = new SelectionInfoOverlay();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
@@ -227,6 +230,7 @@ export class TextureArrayLodManager {
     this.raycaster.params.Points = { threshold: this.options.pointPickRadius };
     this.group.add(this.cardGroup);
     this.group.add(this.highResGroup);
+    this.group.add(this.selectionOverlay.object);
     this.scene.add(this.group);
     this.setImages(images);
     if (this.options.textureArrayIndexUrl) void this.loadTextureArrayIndex();
@@ -272,6 +276,7 @@ export class TextureArrayLodManager {
     this.updateAccumulator += deltaSeconds;
     this.updateBillboards(camera);
     this.updateHighResMeshes(camera);
+    this.updateSelectionOverlay(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
@@ -285,12 +290,11 @@ export class TextureArrayLodManager {
 
   setSelected(id: string | null): void {
     this.selectedId = id;
-    if (id) {
-      const record = this.records.get(id);
-      if (record) {
-        this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
-        if (record.textureArray) this.requestPage(record.textureArray.page);
-      }
+    const record = id ? this.records.get(id) : undefined;
+    this.selectionOverlay.setImage(record?.image ?? null);
+    if (record) {
+      this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
+      if (record.textureArray) this.requestPage(record.textureArray.page);
     }
   }
 
@@ -300,10 +304,12 @@ export class TextureArrayLodManager {
     const highResId = typeof highResObject?.userData.id === 'string' ? highResObject.userData.id : undefined;
     if (highResId) return this.records.get(highResId)?.image ?? null;
 
-    const cardIntersections = this.raycaster.intersectObjects([...this.pageViews.values()].map((view) => view.mesh), false);
-    const cardObject = cardIntersections[0]?.object;
-    const cardId = typeof cardObject?.userData.id === 'string' ? cardObject.userData.id : undefined;
-    if (cardId) return this.records.get(cardId)?.image ?? null;
+    const cardIntersection = this.raycaster.intersectObjects([...this.pageViews.values()].map((view) => view.mesh), false)[0];
+    if (cardIntersection) {
+      const view = [...this.pageViews.values()].find((candidate) => candidate.mesh === cardIntersection.object);
+      const instanceId = cardIntersection.instanceId;
+      if (view && instanceId !== undefined) return view.visibleRecords[instanceId]?.image ?? null;
+    }
 
     if (!this.points) return null;
     const pointIntersection = this.raycaster.intersectObject(this.points, false)[0];
@@ -329,6 +335,7 @@ export class TextureArrayLodManager {
     this.domElement.removeEventListener('pointermove', this.onPointerMove);
     this.domElement.removeEventListener('click', this.onClick);
     this.clear();
+    this.selectionOverlay.dispose();
     this.scene.remove(this.group);
     for (const view of this.pageViews.values()) view.texture.dispose();
     this.pageViews.clear();
@@ -465,7 +472,7 @@ export class TextureArrayLodManager {
     mesh.count = 0;
     mesh.frustumCulled = false;
     this.cardGroup.add(mesh);
-    this.pageViews.set(page.index, { page, texture, mesh, layer, visibleIds: new Set(), lastUsedFrame: this.frame });
+    this.pageViews.set(page.index, { page, texture, mesh, layer, visibleIds: new Set(), visibleRecords: [], lastUsedFrame: this.frame });
   }
 
   private rebuildPageInstances(cameraQuaternion: Quaternion): void {
@@ -484,6 +491,7 @@ export class TextureArrayLodManager {
       view.visibleIds = new Set(records.map((record) => record.image.id));
       view.lastUsedFrame = records.length > 0 ? this.frame : view.lastUsedFrame;
       view.mesh.count = Math.min(records.length, view.mesh.instanceMatrix.count);
+      view.visibleRecords = records.slice(0, view.mesh.count);
       for (let index = 0; index < view.mesh.count; index += 1) {
         const record = records[index]!;
         const textureArray = record.textureArray!;
@@ -743,6 +751,17 @@ export class TextureArrayLodManager {
     this.onHover?.(image);
   }
 
+  private updateSelectionOverlay(camera: PerspectiveCamera): void {
+    if (!this.selectedId) return;
+    const record = this.records.get(this.selectedId);
+    if (!record) {
+      this.selectionOverlay.setImage(null);
+      return;
+    }
+    const [width, height] = this.getCardDimensions(record.image);
+    this.selectionOverlay.update(camera, record.position, width, height);
+  }
+
   private onPointerMove(event: PointerEvent): void {
     if (document.pointerLockElement === this.domElement) {
       this.pointer.set(0, 0);
@@ -755,14 +774,13 @@ export class TextureArrayLodManager {
   }
 
   private onClick(): void {
-    if (!this.onSelect) return;
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
     if (image) {
       this.setSelected(image.id);
-      this.onSelect(image);
+      this.onSelect?.(image);
     }
   }
 
@@ -773,6 +791,7 @@ export class TextureArrayLodManager {
     for (const view of this.pageViews.values()) {
       view.mesh.count = 0;
       view.visibleIds.clear();
+      view.visibleRecords = [];
     }
     if (this.points) {
       this.points.geometry.dispose();
@@ -784,6 +803,7 @@ export class TextureArrayLodManager {
     this.recordsByPointIndex.length = 0;
     this.spatialIndex = null;
     this.selectedId = null;
+    this.selectionOverlay.setImage(null);
     this.hoveredId = null;
     this.desiredRecords = [];
     this.lastCandidateCount = 0;

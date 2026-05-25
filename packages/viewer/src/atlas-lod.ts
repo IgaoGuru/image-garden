@@ -541,14 +541,13 @@ export class AtlasLodManager {
   }
 
   private onClick(): void {
-    if (!this.onSelect) return;
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
     if (image) {
       this.setSelected(image.id);
-      this.onSelect(image);
+      this.onSelect?.(image);
     }
   }
 
