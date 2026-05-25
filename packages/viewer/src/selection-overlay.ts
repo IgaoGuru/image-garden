@@ -18,8 +18,13 @@ import type { PositionedImage } from './types';
 
 const panelCanvasWidth = 1024;
 const panelCanvasHeight = 640;
-const panelPadding = 48;
-const panelFooterHeight = 86;
+const panelPadding = 40;
+const panelFooterHeight = 78;
+const selectionStrokeColor = '#ffffff';
+const panelStrokeWidth = 2;
+const bodyFontSize = 24;
+const bodyLineHeight = 30;
+const footerFontSize = 21;
 
 export class SelectionInfoOverlay {
   readonly object = new Group();
@@ -55,7 +60,7 @@ export class SelectionInfoOverlay {
     this.border.scale.set(cardWidth * borderScale, cardHeight * borderScale, 1);
 
     const panelHeight = Math.max(cardHeight * 1.05, 7.5);
-    const panelWidth = panelHeight * 1.6;
+    const panelWidth = panelHeight * 1.72;
     const gap = Math.max(cardHeight * 0.22, 1.8);
     this.panel.position.set((cardWidth / 2) + gap + (panelWidth / 2), 0, 0.05);
     this.panel.scale.set(panelWidth, panelHeight, 1);
@@ -144,20 +149,22 @@ function createInfoPanelTexture(image: PositionedImage): CanvasTexture {
   context.clearRect(0, 0, panelCanvasWidth, panelCanvasHeight);
   context.fillStyle = 'rgba(2, 2, 4, 0.88)';
   context.fillRect(0, 0, panelCanvasWidth, panelCanvasHeight);
-  context.strokeStyle = '#ffffff';
-  context.lineWidth = 8;
-  context.strokeRect(4, 4, panelCanvasWidth - 8, panelCanvasHeight - 8);
+  context.strokeStyle = selectionStrokeColor;
+  context.lineWidth = panelStrokeWidth;
+  const strokeInset = panelStrokeWidth / 2;
+  context.strokeRect(strokeInset, strokeInset, panelCanvasWidth - panelStrokeWidth, panelCanvasHeight - panelStrokeWidth);
 
-  context.fillStyle = '#ffffff';
+  context.fillStyle = selectionStrokeColor;
   context.textBaseline = 'top';
-  context.font = '30px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  context.font = `${bodyFontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
 
   const body = ocrTextForImage(image);
-  const bodyLines = wrapText(context, body, panelCanvasWidth - (panelPadding * 2), 15);
+  const maxBodyLines = Math.floor((panelCanvasHeight - panelFooterHeight - (panelPadding * 1.5)) / bodyLineHeight);
+  const bodyLines = wrapText(context, body, panelCanvasWidth - (panelPadding * 2), maxBodyLines);
   let y = panelPadding;
   for (const line of bodyLines) {
     context.fillText(line, panelPadding, y);
-    y += 36;
+    y += bodyLineHeight;
   }
 
   const footer = pageIssueLabel(image);
@@ -169,8 +176,8 @@ function createInfoPanelTexture(image: PositionedImage): CanvasTexture {
     context.lineTo(panelCanvasWidth - panelPadding, panelCanvasHeight - panelFooterHeight);
     context.stroke();
 
-    context.font = '26px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    context.fillStyle = '#ffffff';
+    context.font = `${footerFontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    context.fillStyle = selectionStrokeColor;
     context.fillText(truncateToWidth(context, footer, panelCanvasWidth - (panelPadding * 2)), panelPadding, panelCanvasHeight - 58);
   }
 
