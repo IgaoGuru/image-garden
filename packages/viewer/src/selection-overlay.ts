@@ -60,7 +60,7 @@ export class SelectionInfoOverlay {
     this.border.scale.set(cardWidth * borderScale, cardHeight * borderScale, 1);
 
     const panelHeight = Math.max(cardHeight * 1.05, 7.5);
-    const panelWidth = panelHeight * 1.72;
+    const panelWidth = panelHeight * 1.03;
     const gap = Math.max(cardHeight * 0.22, 1.8);
     this.panel.position.set((cardWidth / 2) + gap + (panelWidth / 2), 0, 0.05);
     this.panel.scale.set(panelWidth, panelHeight, 1);
