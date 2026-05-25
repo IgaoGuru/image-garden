@@ -47,6 +47,7 @@ interface LayoutTuning {
   minCardScreenHeightPx: number;
   frustumCullMargin: number;
   maxTexturedCards: number;
+  maxSelectionDistance: number;
   highResMaxTextures: number;
   debugLod: boolean;
   frustumCullCards: boolean;
@@ -92,6 +93,8 @@ const lodFrustumMarginInput = mustQuery<HTMLInputElement>('#lod-frustum-margin')
 const lodFrustumMarginValue = mustQuery<HTMLOutputElement>('#lod-frustum-margin-value');
 const lodMaxCardsInput = mustQuery<HTMLInputElement>('#lod-max-cards');
 const lodMaxCardsValue = mustQuery<HTMLOutputElement>('#lod-max-cards-value');
+const selectionDistanceInput = mustQuery<HTMLInputElement>('#selection-distance');
+const selectionDistanceValue = mustQuery<HTMLOutputElement>('#selection-distance-value');
 const highResCountInput = mustQuery<HTMLInputElement>('#high-res-count');
 const highResCountValue = mustQuery<HTMLOutputElement>('#high-res-count-value');
 const debugLodEnabled = mustQuery<HTMLInputElement>('#debug-lod-enabled');
@@ -144,6 +147,7 @@ const defaultLayoutTuning: LayoutTuning = {
   minCardScreenHeightPx: 20,
   frustumCullMargin: 0.1,
   maxTexturedCards: 9_000,
+  maxSelectionDistance: 30,
   highResMaxTextures: 3,
   debugLod: false,
   frustumCullCards: true,
@@ -161,15 +165,35 @@ window.setInterval(() => {
   renderProgressLog();
 }, 140);
 
+// Static hosting mode config (set at build time via VITE_* env vars)
+const STATIC_MODE = import.meta.env.VITE_STATIC_MODE === 'true';
+const STATIC_ASSETS_URL = import.meta.env.VITE_STATIC_ASSETS_URL as string | undefined;
+const STATIC_STATUS_URL = import.meta.env.VITE_STATIC_STATUS_URL as string | undefined;
+const STATIC_TEXTURE_ARRAY_URL = import.meta.env.VITE_STATIC_TEXTURE_ARRAY_URL as string | undefined;
+const STATIC_ATLAS_URL = import.meta.env.VITE_STATIC_ATLAS_URL as string | undefined;
+const DEV_MOCK_OCR = import.meta.env.VITE_DEV_MOCK_OCR === 'true';
+
 void boot();
 
 async function boot(): Promise<void> {
   try {
-    const [loadedAssets, initialStatus] = await Promise.all([
-      fetchAllAssets(),
-      fetchJson<ApiStatus>('/api/status').catch(() => null),
-    ]);
+    let loadedAssets: RuntimeAsset[];
+    let initialStatus: ApiStatus | null;
+
+    if (STATIC_MODE && STATIC_ASSETS_URL) {
+      loadedAssets = await fetchStaticAssets();
+      initialStatus = STATIC_STATUS_URL
+        ? await fetchJson<ApiStatus>(STATIC_STATUS_URL).catch(() => null)
+        : null;
+    } else {
+      [loadedAssets, initialStatus] = await Promise.all([
+        fetchAllAssets(),
+        fetchJson<ApiStatus>('/api/status').catch(() => null),
+      ]);
+    }
+
     if (initialStatus) assertCompatibleStudioStatus(initialStatus);
+    loadedAssets = DEV_MOCK_OCR ? addMockOcrMetadata(loadedAssets) : loadedAssets;
     assets = loadedAssets;
     latestStatus = initialStatus;
     if (assets.length > 0) {
@@ -185,6 +209,34 @@ async function boot(): Promise<void> {
     status.textContent = `startup failed: ${errorMessage(error)}`;
     showOnboarding();
   }
+}
+
+async function fetchStaticAssets(): Promise<RuntimeAsset[]> {
+  const payload = await fetchJson<AssetPage>(STATIC_ASSETS_URL!);
+  return payload.assets ?? [];
+}
+
+function addMockOcrMetadata(inputAssets: RuntimeAsset[]): RuntimeAsset[] {
+  return inputAssets.map((asset, index) => ({
+    ...asset,
+    metadata: {
+      ...(asset.metadata ?? {}),
+      pageNumber: asset.metadata?.pageNumber ?? String(index + 1),
+      issueFilename: asset.metadata?.issueFilename ?? 'mock-whole-earth-issue.pdf',
+      publicationDate: asset.metadata?.publicationDate ?? 'Mock 1970',
+      ocrText: mockOcrText(asset, index),
+    },
+  }));
+}
+
+function mockOcrText(asset: RuntimeAsset, index: number): string {
+  const pageNumber = asset.metadata?.pageNumber ?? String(index + 1);
+  return [
+    `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Whole Garden OCR mock text for page ${pageNumber}.`,
+    'Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.',
+    'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.',
+    'This temporary development transcription is injected by VITE_DEV_MOCK_OCR until the OCR-enriched hosted payload is regenerated.',
+  ].join(' ');
 }
 
 async function fetchAllAssets(): Promise<RuntimeAsset[]> {
@@ -214,9 +266,9 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
     {
       backgroundColor: 0x000000,
       sprites: {
-        renderMode: 'auto',
+        renderMode: 'lod',
         textureArray: true,
-        textureArrayIndexUrl: '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
+        textureArrayIndexUrl: STATIC_TEXTURE_ARRAY_URL ?? '/api/texture-array/index.json?thumbSize=128&layersPerPage=256',
         textureArrayPageConcurrency: 4,
         textureArrayMaxPages: 40,
         highRes: layoutTuning.highResMaxTextures > 0,
@@ -227,13 +279,14 @@ function mountViewer(nextAssets: RuntimeAsset[]): void {
         highResMaxTextures: layoutTuning.highResMaxTextures,
         highResMaxConcurrentLoads: 1,
         atlas: true,
-        atlasIndexUrl: '/api/atlas/index.json',
+        atlasIndexUrl: STATIC_ATLAS_URL ?? '/api/atlas/index.json',
         atlasPageConcurrency: 6,
         atlasMaxPages: 24,
         lazyLoadDistance: layoutTuning.lazyLoadDistance,
         textureUnloadDistance: layoutTuning.textureUnloadDistance,
         maxTexturedCards: layoutTuning.maxTexturedCards,
         maxLoadedTextures: layoutTuning.maxTexturedCards,
+        maxSelectionDistance: layoutTuning.maxSelectionDistance,
         minCardScreenHeightPx: layoutTuning.minCardScreenHeightPx,
         frustumCullCards: layoutTuning.frustumCullCards,
         frustumCullMargin: layoutTuning.frustumCullMargin,
@@ -312,6 +365,7 @@ function setupLayoutControls(): void {
     lodMinScreenHeightInput,
     lodFrustumMarginInput,
     lodMaxCardsInput,
+    selectionDistanceInput,
     highResCountInput,
     debugLodEnabled,
     lodFrustumEnabled,
@@ -353,6 +407,7 @@ function readLayoutControls(): LayoutTuning {
     minCardScreenHeightPx: numericInput(lodMinScreenHeightInput, defaultLayoutTuning.minCardScreenHeightPx),
     frustumCullMargin: numericInput(lodFrustumMarginInput, defaultLayoutTuning.frustumCullMargin),
     maxTexturedCards: numericInput(lodMaxCardsInput, defaultLayoutTuning.maxTexturedCards),
+    maxSelectionDistance: numericInput(selectionDistanceInput, defaultLayoutTuning.maxSelectionDistance),
     highResMaxTextures: numericInput(highResCountInput, defaultLayoutTuning.highResMaxTextures),
     debugLod: debugLodEnabled.checked,
     frustumCullCards: lodFrustumEnabled.checked,
@@ -381,6 +436,8 @@ function writeLayoutControls(tuning: LayoutTuning): void {
   lodFrustumMarginValue.value = `${Math.round(tuning.frustumCullMargin * 100)}%`;
   lodMaxCardsInput.value = String(tuning.maxTexturedCards);
   lodMaxCardsValue.value = tuning.maxTexturedCards.toFixed(0);
+  selectionDistanceInput.value = String(tuning.maxSelectionDistance);
+  selectionDistanceValue.value = tuning.maxSelectionDistance.toFixed(0);
   highResCountInput.value = String(tuning.highResMaxTextures);
   highResCountValue.value = tuning.highResMaxTextures.toFixed(0);
   debugLodEnabled.checked = tuning.debugLod;
@@ -396,7 +453,7 @@ async function rerenderGarden(): Promise<void> {
   await nextFrame();
   rerendering.classList.remove('visible');
   rerendering.setAttribute('aria-hidden', 'true');
-  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · high-res ${layoutTuning.highResMaxTextures.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
+  status.textContent = `${assets.length} images · scale ${layoutTuning.scale.toFixed(2)}× · distance ${layoutTuning.lazyLoadDistance.toFixed(0)} · select ${layoutTuning.maxSelectionDistance.toFixed(0)} · high-res ${layoutTuning.highResMaxTextures.toFixed(0)} · min ${layoutTuning.minCardScreenHeightPx.toFixed(0)}px`;
 }
 
 function numericInput(input: HTMLInputElement, fallback: number): number {

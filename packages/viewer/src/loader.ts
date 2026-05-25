@@ -7,6 +7,7 @@ export interface TextureRequest {
   url: string;
   onLoad: (texture: Texture) => void;
   onError?: (error: unknown) => void;
+  priority?: boolean;
 }
 
 interface QueuedRequest extends TextureRequest {
@@ -41,7 +42,11 @@ export class TextureLoadQueue {
 
     const queued: QueuedRequest = { ...request, cancelled: false };
     this.queued.add(request.id);
-    this.queue.push(queued);
+    if (request.priority === true) {
+      this.queue.unshift(queued);
+    } else {
+      this.queue.push(queued);
+    }
     this.pump();
 
     return () => {

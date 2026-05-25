@@ -26,12 +26,14 @@ import {
   RGBAFormat,
   SRGBColorSpace,
   Texture,
+  TextureLoader,
   UnsignedByteType,
   Vector2,
   Vector3,
 } from 'three';
 
 import { TextureLoadQueue } from './loader';
+import { SelectionInfoOverlay } from './selection-overlay';
 import { SpatialIndex, spatialCellSize } from './spatial-index';
 import { viewportHeightScaleForCap } from './sprites';
 import type {
@@ -77,6 +79,7 @@ interface TextureArrayPageView {
   mesh: InstancedMesh<PlaneGeometry, ShaderMaterial>;
   layer: InstancedBufferAttribute;
   visibleIds: Set<string>;
+  visibleRecords: TextureArrayRecord[];
   lastUsedFrame: number;
 }
 
@@ -87,6 +90,9 @@ interface HighResView {
   lastUsedFrame: number;
 }
 
+const focusMaxCameraSpeed = 18;
+const focusRayRadius = 10;
+
 export interface TextureArrayLodManagerOptions extends SpriteOptions {
   onSelect?: (image: ConstellationImage) => void;
   onHover?: (image: ConstellationImage | null) => void;
@@ -96,10 +102,12 @@ export class TextureArrayLodManager {
   private readonly group = new Group();
   private readonly cardGroup = new Group();
   private readonly highResGroup = new Group();
+  private readonly selectionOverlay = new SelectionInfoOverlay();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
   private readonly spriteOffset = new Vector3();
+  private readonly lastCameraPosition = new Vector3();
   private readonly projectionView = new Matrix4();
   private readonly cullProjection = new Matrix4();
   private readonly frustum = new Frustum();
@@ -112,6 +120,7 @@ export class TextureArrayLodManager {
   private readonly pageLoading = new Set<number>();
   private readonly pageViews = new Map<number, TextureArrayPageView>();
   private readonly pageByIndex = new Map<number, TextureArrayIndexPage>();
+  private readonly focusLoader = new TextureLoader();
   private readonly highResViews = new Map<string, HighResView>();
   private readonly highResDesiredIds = new Set<string>();
   private highResQueue: TextureLoadQueue;
@@ -124,6 +133,7 @@ export class TextureArrayLodManager {
       | 'selectedColor'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'maxSelectionDistance'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
       | 'frustumCullMargin'
@@ -147,6 +157,7 @@ export class TextureArrayLodManager {
     selectedColor: number;
     textureUnloadDistance: number;
     pointColor: number;
+    maxSelectionDistance: number;
     minCardScreenHeightPx: number;
     frustumCullCards: boolean;
     frustumCullMargin: number;
@@ -169,11 +180,16 @@ export class TextureArrayLodManager {
   private hoveredId: string | null = null;
   private updateAccumulator = 0.25;
   private frame = 0;
+  private hasLastCameraPosition = false;
+  private cameraSpeed = Infinity;
   private activePageLoads = 0;
   private totalPageRequests = 0;
   private totalPageLoads = 0;
   private totalPageErrors = 0;
   private desiredRecords: TextureArrayRecord[] = [];
+  private focusRecord: TextureArrayRecord | null = null;
+  private focusLoadId: string | null = null;
+  private focusLoadToken = 0;
   private lastCandidateCount = 0;
   private lastVisibleCandidateCount = 0;
   private lastFrustumCulledCount = 0;
@@ -206,6 +222,7 @@ export class TextureArrayLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
+      maxSelectionDistance: options.maxSelectionDistance ?? Infinity,
       minCardScreenHeightPx: options.minCardScreenHeightPx ?? 0,
       frustumCullCards: options.frustumCullCards ?? true,
       frustumCullMargin: options.frustumCullMargin ?? 0.1,
@@ -223,10 +240,12 @@ export class TextureArrayLodManager {
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
     this.highResQueue = new TextureLoadQueue(this.options.highResMaxConcurrentLoads);
+    this.focusLoader.setCrossOrigin('anonymous');
     this.debugStats = this.emptyDebugStats();
     this.raycaster.params.Points = { threshold: this.options.pointPickRadius };
     this.group.add(this.cardGroup);
     this.group.add(this.highResGroup);
+    this.group.add(this.selectionOverlay.object);
     this.scene.add(this.group);
     this.setImages(images);
     if (this.options.textureArrayIndexUrl) void this.loadTextureArrayIndex();
@@ -270,8 +289,10 @@ export class TextureArrayLodManager {
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
     this.frame += 1;
     this.updateAccumulator += deltaSeconds;
+    this.updateCameraSpeed(camera, deltaSeconds);
     this.updateBillboards(camera);
     this.updateHighResMeshes(camera);
+    this.updateSelectionOverlay(camera);
     this.applyViewportHeightCap(camera);
     this.pumpPageQueue();
 
@@ -285,12 +306,11 @@ export class TextureArrayLodManager {
 
   setSelected(id: string | null): void {
     this.selectedId = id;
-    if (id) {
-      const record = this.records.get(id);
-      if (record) {
-        this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
-        if (record.textureArray) this.requestPage(record.textureArray.page);
-      }
+    const record = id ? this.records.get(id) : undefined;
+    this.selectionOverlay.setImage(record?.image ?? null);
+    if (record) {
+      this.desiredRecords = [record, ...this.desiredRecords.filter((candidate) => candidate.image.id !== id)];
+      if (record.textureArray) this.requestPage(record.textureArray.page);
     }
   }
 
@@ -300,10 +320,12 @@ export class TextureArrayLodManager {
     const highResId = typeof highResObject?.userData.id === 'string' ? highResObject.userData.id : undefined;
     if (highResId) return this.records.get(highResId)?.image ?? null;
 
-    const cardIntersections = this.raycaster.intersectObjects([...this.pageViews.values()].map((view) => view.mesh), false);
-    const cardObject = cardIntersections[0]?.object;
-    const cardId = typeof cardObject?.userData.id === 'string' ? cardObject.userData.id : undefined;
-    if (cardId) return this.records.get(cardId)?.image ?? null;
+    const cardIntersection = this.raycaster.intersectObjects([...this.pageViews.values()].map((view) => view.mesh), false)[0];
+    if (cardIntersection) {
+      const view = [...this.pageViews.values()].find((candidate) => candidate.mesh === cardIntersection.object);
+      const instanceId = cardIntersection.instanceId;
+      if (view && instanceId !== undefined) return view.visibleRecords[instanceId]?.image ?? null;
+    }
 
     if (!this.points) return null;
     const pointIntersection = this.raycaster.intersectObject(this.points, false)[0];
@@ -329,6 +351,7 @@ export class TextureArrayLodManager {
     this.domElement.removeEventListener('pointermove', this.onPointerMove);
     this.domElement.removeEventListener('click', this.onClick);
     this.clear();
+    this.selectionOverlay.dispose();
     this.scene.remove(this.group);
     for (const view of this.pageViews.values()) view.texture.dispose();
     this.pageViews.clear();
@@ -395,6 +418,11 @@ export class TextureArrayLodManager {
     this.desiredRecords = candidates
       .sort((a, b) => a.lastDistance - b.lastDistance)
       .slice(0, this.options.maxTexturedCards);
+    this.focusRecord = this.findFocusRecord(camera);
+    if (this.focusRecord?.textureArray && !this.desiredRecords.some((record) => record.image.id === this.focusRecord?.image.id)) {
+      this.focusRecord.lastDistance = this.focusRecord.position.distanceTo(camera.position);
+      this.desiredRecords.unshift(this.focusRecord);
+    }
     if (this.selectedId) {
       const selected = this.records.get(this.selectedId);
       if (selected?.textureArray && !this.desiredRecords.some((record) => record.image.id === selected.image.id)) {
@@ -404,8 +432,9 @@ export class TextureArrayLodManager {
     }
 
     for (const record of this.desiredRecords) {
-      if (record.textureArray) this.requestPage(record.textureArray.page);
+      if (record.textureArray) this.requestPage(record.textureArray.page, record.image.id === this.focusRecord?.image.id);
     }
+    if (this.focusRecord) this.requestFocusedTextureNow(this.focusRecord);
     this.updateHighResCandidates(camera);
     this.evictUnusedPages();
     this.rebuildPageInstances(camera.quaternion);
@@ -413,11 +442,25 @@ export class TextureArrayLodManager {
     this.debugStats = this.debugSnapshot(performance.now() - startedAt);
   }
 
-  private requestPage(index: number): void {
-    if (this.pageViews.has(index) || this.pageQueued.has(index) || this.pageLoading.has(index)) return;
+  private requestPage(index: number, priority = false): void {
+    if (this.pageViews.has(index) || this.pageLoading.has(index)) return;
     if (!this.pageByIndex.has(index)) return;
+    if (this.pageQueued.has(index)) {
+      if (priority) {
+        const queueIndex = this.pageQueue.indexOf(index);
+        if (queueIndex > 0) {
+          this.pageQueue.splice(queueIndex, 1);
+          this.pageQueue.unshift(index);
+        }
+      }
+      return;
+    }
     this.pageQueued.add(index);
-    this.pageQueue.push(index);
+    if (priority) {
+      this.pageQueue.unshift(index);
+    } else {
+      this.pageQueue.push(index);
+    }
     this.totalPageRequests += 1;
     this.pumpPageQueue();
   }
@@ -465,7 +508,7 @@ export class TextureArrayLodManager {
     mesh.count = 0;
     mesh.frustumCulled = false;
     this.cardGroup.add(mesh);
-    this.pageViews.set(page.index, { page, texture, mesh, layer, visibleIds: new Set(), lastUsedFrame: this.frame });
+    this.pageViews.set(page.index, { page, texture, mesh, layer, visibleIds: new Set(), visibleRecords: [], lastUsedFrame: this.frame });
   }
 
   private rebuildPageInstances(cameraQuaternion: Quaternion): void {
@@ -484,6 +527,7 @@ export class TextureArrayLodManager {
       view.visibleIds = new Set(records.map((record) => record.image.id));
       view.lastUsedFrame = records.length > 0 ? this.frame : view.lastUsedFrame;
       view.mesh.count = Math.min(records.length, view.mesh.instanceMatrix.count);
+      view.visibleRecords = records.slice(0, view.mesh.count);
       for (let index = 0; index < view.mesh.count; index += 1) {
         const record = records[index]!;
         const textureArray = record.textureArray!;
@@ -549,30 +593,40 @@ export class TextureArrayLodManager {
       return;
     }
 
-    const desired = this.desiredRecords
-      .filter((record) => this.highResUrl(record) !== null)
+    const priorityRecords = this.focusRecord ? [this.focusRecord, ...this.desiredRecords] : this.desiredRecords;
+    const seen = new Set<string>();
+    const desired = priorityRecords
+      .filter((record) => {
+        if (seen.has(record.image.id) || this.highResUrl(record) === null) return false;
+        seen.add(record.image.id);
+        return true;
+      })
       .slice(0, this.options.highResMaxTextures);
     for (const record of desired) {
       this.highResDesiredIds.add(record.image.id);
-      this.requestHighRes(record);
+      this.requestHighRes(record, record.image.id === this.focusRecord?.image.id);
     }
     this.evictHighResViews();
   }
 
-  private requestHighRes(record: TextureArrayRecord): void {
+  private requestHighRes(record: TextureArrayRecord, priority = false): void {
     if (this.highResViews.has(record.image.id) || this.highResQueue.has(record.image.id)) return;
     const url = this.highResUrl(record);
     if (!url) return;
     this.highResQueue.request({
       id: record.image.id,
       url,
+      priority,
       onLoad: (texture) => this.addHighResView(record, texture),
     });
   }
 
-  private addHighResView(record: TextureArrayRecord, texture: Texture): void {
-    if (this.highResViews.has(record.image.id)) return;
-    if (!this.highResDesiredIds.has(record.image.id)) {
+  private addHighResView(record: TextureArrayRecord, texture: Texture, force = false): void {
+    if (this.highResViews.has(record.image.id)) {
+      if (force) texture.dispose();
+      return;
+    }
+    if (!force && !this.highResDesiredIds.has(record.image.id)) {
       this.highResQueue.disposeTexture(record.image.id);
       return;
     }
@@ -613,8 +667,40 @@ export class TextureArrayLodManager {
     }
   }
 
+  private requestFocusedTextureNow(record: TextureArrayRecord): void {
+    if (this.highResViews.has(record.image.id) || this.focusLoadId === record.image.id) return;
+    const url = this.focusTextureUrl(record);
+    if (!url) return;
+
+    const loadId = record.image.id;
+    const token = this.focusLoadToken + 1;
+    this.focusLoadToken = token;
+    this.focusLoadId = loadId;
+    this.focusLoader.load(
+      url,
+      (texture) => {
+        if (this.focusLoadToken !== token || this.focusRecord?.image.id !== loadId) {
+          texture.dispose();
+          if (this.focusLoadId === loadId) this.focusLoadId = null;
+          return;
+        }
+        this.highResDesiredIds.add(loadId);
+        this.addHighResView(record, texture, true);
+        if (this.focusLoadId === loadId) this.focusLoadId = null;
+      },
+      undefined,
+      () => {
+        if (this.focusLoadId === loadId) this.focusLoadId = null;
+      },
+    );
+  }
+
   private highResUrl(record: TextureArrayRecord): string | null {
     return record.image.highResThumbnailUrl ?? null;
+  }
+
+  private focusTextureUrl(record: TextureArrayRecord): string | null {
+    return record.image.highResThumbnailUrl ?? record.image.thumbnailUrl ?? record.image.url ?? null;
   }
 
   private disposeHighResView(id: string, options: { disposeTexture: boolean }): void {
@@ -734,6 +820,44 @@ export class TextureArrayLodManager {
     }
   }
 
+  private updateCameraSpeed(camera: PerspectiveCamera, deltaSeconds: number): void {
+    if (!this.hasLastCameraPosition || deltaSeconds <= 0) {
+      this.cameraSpeed = 0;
+      this.lastCameraPosition.copy(camera.position);
+      this.hasLastCameraPosition = true;
+      return;
+    }
+    this.cameraSpeed = camera.position.distanceTo(this.lastCameraPosition) / deltaSeconds;
+    this.lastCameraPosition.copy(camera.position);
+  }
+
+  private findFocusRecord(camera: PerspectiveCamera): TextureArrayRecord | null {
+    if (this.cameraSpeed > focusMaxCameraSpeed) return null;
+    const focusDistance = Math.min(this.options.lazyLoadDistance, this.options.maxSelectionDistance);
+    if (!Number.isFinite(focusDistance) || focusDistance <= 0) return null;
+    const records = this.spatialIndex?.queryRadius(camera.position, focusDistance) ?? [...this.records.values()];
+    camera.getWorldDirection(this.cameraForward).normalize();
+
+    let best: TextureArrayRecord | null = null;
+    let bestScore = Infinity;
+    for (const record of records) {
+      if (!record.textureArray) continue;
+      this.spriteOffset.subVectors(record.position, camera.position);
+      const depth = this.spriteOffset.dot(this.cameraForward);
+      if (depth <= camera.near || depth > focusDistance) continue;
+      const distanceSquared = this.spriteOffset.lengthSq();
+      const perpendicular = Math.sqrt(Math.max(0, distanceSquared - (depth * depth)));
+      const radius = Math.max(focusRayRadius, record.baseHeight * 0.75);
+      if (perpendicular > radius) continue;
+      const score = perpendicular + (depth * 0.015);
+      if (score < bestScore) {
+        bestScore = score;
+        best = record;
+      }
+    }
+    return best;
+  }
+
   private updateHover(camera: PerspectiveCamera): void {
     this.raycaster.setFromCamera(this.pointer, camera);
     const image = this.pick();
@@ -741,6 +865,17 @@ export class TextureArrayLodManager {
     if (nextId === this.hoveredId) return;
     this.hoveredId = nextId;
     this.onHover?.(image);
+  }
+
+  private updateSelectionOverlay(camera: PerspectiveCamera): void {
+    if (!this.selectedId) return;
+    const record = this.records.get(this.selectedId);
+    if (!record) {
+      this.selectionOverlay.setImage(null);
+      return;
+    }
+    const [width, height] = this.getCardDimensions(record.image);
+    this.selectionOverlay.update(camera, record.position, width, height);
   }
 
   private onPointerMove(event: PointerEvent): void {
@@ -755,15 +890,19 @@ export class TextureArrayLodManager {
   }
 
   private onClick(): void {
-    if (!this.onSelect) return;
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
-    if (image) {
-      this.setSelected(image.id);
-      this.onSelect(image);
+    if (!image) return;
+    if (image.id === this.selectedId) {
+      this.setSelected(null);
+      return;
     }
+    const record = this.records.get(image.id);
+    if (!record || record.position.distanceTo(camera.position) > this.options.maxSelectionDistance) return;
+    this.setSelected(image.id);
+    this.onSelect?.(image);
   }
 
   private clear(): void {
@@ -773,6 +912,7 @@ export class TextureArrayLodManager {
     for (const view of this.pageViews.values()) {
       view.mesh.count = 0;
       view.visibleIds.clear();
+      view.visibleRecords = [];
     }
     if (this.points) {
       this.points.geometry.dispose();
@@ -784,8 +924,12 @@ export class TextureArrayLodManager {
     this.recordsByPointIndex.length = 0;
     this.spatialIndex = null;
     this.selectedId = null;
+    this.selectionOverlay.setImage(null);
     this.hoveredId = null;
     this.desiredRecords = [];
+    this.focusRecord = null;
+    this.focusLoadId = null;
+    this.focusLoadToken += 1;
     this.lastCandidateCount = 0;
     this.lastVisibleCandidateCount = 0;
     this.lastFrustumCulledCount = 0;

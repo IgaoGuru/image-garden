@@ -16,6 +16,7 @@ import {
 } from 'three';
 
 import { TextureLoadQueue } from './loader';
+import { SelectionInfoOverlay } from './selection-overlay';
 import { viewportHeightScaleForCap } from './sprites';
 import type { ConstellationImage, PositionedImage, SpriteOptions, ViewerDebugStats } from './types';
 
@@ -38,6 +39,7 @@ export interface PointLodManagerOptions extends SpriteOptions {
 export class PointLodManager {
   private readonly group = new Group();
   private readonly cardGroup = new Group();
+  private readonly selectionOverlay = new SelectionInfoOverlay();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
@@ -55,6 +57,7 @@ export class PointLodManager {
       | 'maxTexturedCards'
       | 'textureUnloadDistance'
       | 'pointColor'
+      | 'maxSelectionDistance'
       | 'minCardScreenHeightPx'
       | 'frustumCullCards'
       | 'frustumCullMargin'
@@ -79,6 +82,7 @@ export class PointLodManager {
     maxTexturedCards: number;
     textureUnloadDistance: number;
     pointColor: number;
+    maxSelectionDistance: number;
   };
   private readonly onSelect?: (image: ConstellationImage) => void;
   private readonly onHover?: (image: ConstellationImage | null) => void;
@@ -113,6 +117,7 @@ export class PointLodManager {
       pointColor: options.pointColor ?? 0x8ea2ff,
       pointOpacity: options.pointOpacity ?? 0.68,
       pointPickRadius: options.pointPickRadius ?? 8,
+      maxSelectionDistance: options.maxSelectionDistance ?? Infinity,
     };
     this.onSelect = options.onSelect;
     this.onHover = options.onHover;
@@ -120,6 +125,7 @@ export class PointLodManager {
     this.debugStats = this.emptyDebugStats();
     this.raycaster.params.Points = { threshold: this.options.pointPickRadius };
     this.group.add(this.cardGroup);
+    this.group.add(this.selectionOverlay.object);
     this.scene.add(this.group);
     this.setImages(images);
 
@@ -166,6 +172,7 @@ export class PointLodManager {
       }
     }
     this.applyViewportHeightCap(camera);
+    this.updateSelectionOverlay(camera);
 
     if (this.updateAccumulator >= 0.25) {
       this.updateAccumulator = 0;
@@ -180,6 +187,7 @@ export class PointLodManager {
     if (previous?.card) this.applySelectionTint(previous, false);
     this.selectedId = id;
     const next = id ? this.records.get(id) : undefined;
+    this.selectionOverlay.setImage(next?.image ?? null);
     if (next) {
       this.ensureCard(next);
       this.requestTexture(next);
@@ -219,6 +227,7 @@ export class PointLodManager {
     this.domElement.removeEventListener('pointermove', this.onPointerMove);
     this.domElement.removeEventListener('click', this.onClick);
     this.clear();
+    this.selectionOverlay.dispose();
     this.scene.remove(this.group);
     this.textureQueue.dispose();
   }
@@ -376,6 +385,17 @@ export class PointLodManager {
     this.onHover?.(image);
   }
 
+  private updateSelectionOverlay(camera: PerspectiveCamera): void {
+    if (!this.selectedId) return;
+    const record = this.records.get(this.selectedId);
+    if (!record) {
+      this.selectionOverlay.setImage(null);
+      return;
+    }
+    const [width, height] = this.getCardDimensions(record.image);
+    this.selectionOverlay.update(camera, record.position, width, height);
+  }
+
   private onPointerMove(event: PointerEvent): void {
     if (document.pointerLockElement === this.domElement) {
       this.pointer.set(0, 0);
@@ -389,15 +409,19 @@ export class PointLodManager {
   }
 
   private onClick(): void {
-    if (!this.onSelect) return;
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
-    if (image) {
-      this.setSelected(image.id);
-      this.onSelect(image);
+    if (!image) return;
+    if (image.id === this.selectedId) {
+      this.setSelected(null);
+      return;
     }
+    const record = this.records.get(image.id);
+    if (!record || record.position.distanceTo(camera.position) > this.options.maxSelectionDistance) return;
+    this.setSelected(image.id);
+    this.onSelect?.(image);
   }
 
   private clear(): void {
@@ -413,6 +437,7 @@ export class PointLodManager {
     this.records.clear();
     this.recordsByPointIndex.length = 0;
     this.selectedId = null;
+    this.selectionOverlay.setImage(null);
     this.hoveredId = null;
   }
 

@@ -69,6 +69,7 @@ export class SpriteManager {
       | 'maxViewportHeight'
       | 'billboard'
       | 'placeholderColor'
+      | 'maxSelectionDistance'
     >
   > & { selectedColor: number };
   private readonly onSelect?: (image: ConstellationImage) => void;
@@ -94,6 +95,7 @@ export class SpriteManager {
       maxViewportHeight: options.maxViewportHeight ?? 0.45,
       billboard: options.billboard ?? true,
       placeholderColor: options.placeholderColor ?? 0x777799,
+      maxSelectionDistance: options.maxSelectionDistance ?? Infinity,
       selectedColor: options.selectedColor ?? 0xffcc66,
     };
     this.onSelect = options.onSelect;
@@ -277,15 +279,19 @@ export class SpriteManager {
   }
 
   private onClick(): void {
-    if (!this.onSelect) return;
     const camera = this.scene.userData.camera as PerspectiveCamera | undefined;
     if (!camera) return;
     this.raycaster.setFromCamera(document.pointerLockElement === this.domElement ? new Vector2(0, 0) : this.pointer, camera);
     const image = this.pick();
-    if (image) {
-      this.setSelected(image.id);
-      this.onSelect(image);
+    if (!image) return;
+    if (image.id === this.selectedId) {
+      this.setSelected(null);
+      return;
     }
+    const record = this.records.get(image.id);
+    if (!record || record.mesh.position.distanceTo(camera.position) > this.options.maxSelectionDistance) return;
+    this.setSelected(image.id);
+    this.onSelect?.(image);
   }
 
   private clearMeshes(): void {
