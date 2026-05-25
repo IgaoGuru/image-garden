@@ -89,6 +89,9 @@ interface HighResView {
   lastUsedFrame: number;
 }
 
+const focusMaxCameraSpeed = 18;
+const focusRayRadius = 10;
+
 export interface TextureArrayLodManagerOptions extends SpriteOptions {
   onSelect?: (image: ConstellationImage) => void;
   onHover?: (image: ConstellationImage | null) => void;
@@ -103,6 +106,7 @@ export class TextureArrayLodManager {
   private readonly pointer = new Vector2(0, 0);
   private readonly cameraForward = new Vector3();
   private readonly spriteOffset = new Vector3();
+  private readonly lastCameraPosition = new Vector3();
   private readonly projectionView = new Matrix4();
   private readonly cullProjection = new Matrix4();
   private readonly frustum = new Frustum();
@@ -174,11 +178,14 @@ export class TextureArrayLodManager {
   private hoveredId: string | null = null;
   private updateAccumulator = 0.25;
   private frame = 0;
+  private hasLastCameraPosition = false;
+  private cameraSpeed = Infinity;
   private activePageLoads = 0;
   private totalPageRequests = 0;
   private totalPageLoads = 0;
   private totalPageErrors = 0;
   private desiredRecords: TextureArrayRecord[] = [];
+  private focusRecord: TextureArrayRecord | null = null;
   private lastCandidateCount = 0;
   private lastVisibleCandidateCount = 0;
   private lastFrustumCulledCount = 0;
@@ -277,6 +284,7 @@ export class TextureArrayLodManager {
   update(camera: PerspectiveCamera, deltaSeconds: number): void {
     this.frame += 1;
     this.updateAccumulator += deltaSeconds;
+    this.updateCameraSpeed(camera, deltaSeconds);
     this.updateBillboards(camera);
     this.updateHighResMeshes(camera);
     this.updateSelectionOverlay(camera);
@@ -405,6 +413,11 @@ export class TextureArrayLodManager {
     this.desiredRecords = candidates
       .sort((a, b) => a.lastDistance - b.lastDistance)
       .slice(0, this.options.maxTexturedCards);
+    this.focusRecord = this.findFocusRecord(camera);
+    if (this.focusRecord?.textureArray && !this.desiredRecords.some((record) => record.image.id === this.focusRecord?.image.id)) {
+      this.focusRecord.lastDistance = this.focusRecord.position.distanceTo(camera.position);
+      this.desiredRecords.unshift(this.focusRecord);
+    }
     if (this.selectedId) {
       const selected = this.records.get(this.selectedId);
       if (selected?.textureArray && !this.desiredRecords.some((record) => record.image.id === selected.image.id)) {
@@ -414,7 +427,7 @@ export class TextureArrayLodManager {
     }
 
     for (const record of this.desiredRecords) {
-      if (record.textureArray) this.requestPage(record.textureArray.page);
+      if (record.textureArray) this.requestPage(record.textureArray.page, record.image.id === this.focusRecord?.image.id);
     }
     this.updateHighResCandidates(camera);
     this.evictUnusedPages();
@@ -423,11 +436,25 @@ export class TextureArrayLodManager {
     this.debugStats = this.debugSnapshot(performance.now() - startedAt);
   }
 
-  private requestPage(index: number): void {
-    if (this.pageViews.has(index) || this.pageQueued.has(index) || this.pageLoading.has(index)) return;
+  private requestPage(index: number, priority = false): void {
+    if (this.pageViews.has(index) || this.pageLoading.has(index)) return;
     if (!this.pageByIndex.has(index)) return;
+    if (this.pageQueued.has(index)) {
+      if (priority) {
+        const queueIndex = this.pageQueue.indexOf(index);
+        if (queueIndex > 0) {
+          this.pageQueue.splice(queueIndex, 1);
+          this.pageQueue.unshift(index);
+        }
+      }
+      return;
+    }
     this.pageQueued.add(index);
-    this.pageQueue.push(index);
+    if (priority) {
+      this.pageQueue.unshift(index);
+    } else {
+      this.pageQueue.push(index);
+    }
     this.totalPageRequests += 1;
     this.pumpPageQueue();
   }
@@ -560,23 +587,30 @@ export class TextureArrayLodManager {
       return;
     }
 
-    const desired = this.desiredRecords
-      .filter((record) => this.highResUrl(record) !== null)
+    const priorityRecords = this.focusRecord ? [this.focusRecord, ...this.desiredRecords] : this.desiredRecords;
+    const seen = new Set<string>();
+    const desired = priorityRecords
+      .filter((record) => {
+        if (seen.has(record.image.id) || this.highResUrl(record) === null) return false;
+        seen.add(record.image.id);
+        return true;
+      })
       .slice(0, this.options.highResMaxTextures);
     for (const record of desired) {
       this.highResDesiredIds.add(record.image.id);
-      this.requestHighRes(record);
+      this.requestHighRes(record, record.image.id === this.focusRecord?.image.id);
     }
     this.evictHighResViews();
   }
 
-  private requestHighRes(record: TextureArrayRecord): void {
+  private requestHighRes(record: TextureArrayRecord, priority = false): void {
     if (this.highResViews.has(record.image.id) || this.highResQueue.has(record.image.id)) return;
     const url = this.highResUrl(record);
     if (!url) return;
     this.highResQueue.request({
       id: record.image.id,
       url,
+      priority,
       onLoad: (texture) => this.addHighResView(record, texture),
     });
   }
@@ -745,6 +779,44 @@ export class TextureArrayLodManager {
     }
   }
 
+  private updateCameraSpeed(camera: PerspectiveCamera, deltaSeconds: number): void {
+    if (!this.hasLastCameraPosition || deltaSeconds <= 0) {
+      this.cameraSpeed = 0;
+      this.lastCameraPosition.copy(camera.position);
+      this.hasLastCameraPosition = true;
+      return;
+    }
+    this.cameraSpeed = camera.position.distanceTo(this.lastCameraPosition) / deltaSeconds;
+    this.lastCameraPosition.copy(camera.position);
+  }
+
+  private findFocusRecord(camera: PerspectiveCamera): TextureArrayRecord | null {
+    if (this.cameraSpeed > focusMaxCameraSpeed) return null;
+    const focusDistance = Math.min(this.options.lazyLoadDistance, this.options.maxSelectionDistance);
+    if (!Number.isFinite(focusDistance) || focusDistance <= 0) return null;
+    const records = this.spatialIndex?.queryRadius(camera.position, focusDistance) ?? [...this.records.values()];
+    camera.getWorldDirection(this.cameraForward).normalize();
+
+    let best: TextureArrayRecord | null = null;
+    let bestScore = Infinity;
+    for (const record of records) {
+      if (!record.textureArray) continue;
+      this.spriteOffset.subVectors(record.position, camera.position);
+      const depth = this.spriteOffset.dot(this.cameraForward);
+      if (depth <= camera.near || depth > focusDistance) continue;
+      const distanceSquared = this.spriteOffset.lengthSq();
+      const perpendicular = Math.sqrt(Math.max(0, distanceSquared - (depth * depth)));
+      const radius = Math.max(focusRayRadius, record.baseHeight * 0.75);
+      if (perpendicular > radius) continue;
+      const score = perpendicular + (depth * 0.015);
+      if (score < bestScore) {
+        bestScore = score;
+        best = record;
+      }
+    }
+    return best;
+  }
+
   private updateHover(camera: PerspectiveCamera): void {
     this.raycaster.setFromCamera(this.pointer, camera);
     const image = this.pick();
@@ -814,6 +886,7 @@ export class TextureArrayLodManager {
     this.selectionOverlay.setImage(null);
     this.hoveredId = null;
     this.desiredRecords = [];
+    this.focusRecord = null;
     this.lastCandidateCount = 0;
     this.lastVisibleCandidateCount = 0;
     this.lastFrustumCulledCount = 0;
