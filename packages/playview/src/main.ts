@@ -167,6 +167,7 @@ const STATIC_ASSETS_URL = import.meta.env.VITE_STATIC_ASSETS_URL as string | und
 const STATIC_STATUS_URL = import.meta.env.VITE_STATIC_STATUS_URL as string | undefined;
 const STATIC_TEXTURE_ARRAY_URL = import.meta.env.VITE_STATIC_TEXTURE_ARRAY_URL as string | undefined;
 const STATIC_ATLAS_URL = import.meta.env.VITE_STATIC_ATLAS_URL as string | undefined;
+const DEV_MOCK_OCR = import.meta.env.VITE_DEV_MOCK_OCR === 'true';
 
 void boot();
 
@@ -188,6 +189,7 @@ async function boot(): Promise<void> {
     }
 
     if (initialStatus) assertCompatibleStudioStatus(initialStatus);
+    loadedAssets = DEV_MOCK_OCR ? addMockOcrMetadata(loadedAssets) : loadedAssets;
     assets = loadedAssets;
     latestStatus = initialStatus;
     if (assets.length > 0) {
@@ -208,6 +210,29 @@ async function boot(): Promise<void> {
 async function fetchStaticAssets(): Promise<RuntimeAsset[]> {
   const payload = await fetchJson<AssetPage>(STATIC_ASSETS_URL!);
   return payload.assets ?? [];
+}
+
+function addMockOcrMetadata(inputAssets: RuntimeAsset[]): RuntimeAsset[] {
+  return inputAssets.map((asset, index) => ({
+    ...asset,
+    metadata: {
+      ...(asset.metadata ?? {}),
+      pageNumber: asset.metadata?.pageNumber ?? String(index + 1),
+      issueFilename: asset.metadata?.issueFilename ?? 'mock-whole-earth-issue.pdf',
+      publicationDate: asset.metadata?.publicationDate ?? 'Mock 1970',
+      ocrText: mockOcrText(asset, index),
+    },
+  }));
+}
+
+function mockOcrText(asset: RuntimeAsset, index: number): string {
+  const pageNumber = asset.metadata?.pageNumber ?? String(index + 1);
+  return [
+    `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Whole Garden OCR mock text for page ${pageNumber}.`,
+    'Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.',
+    'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.',
+    'This temporary development transcription is injected by VITE_DEV_MOCK_OCR until the OCR-enriched hosted payload is regenerated.',
+  ].join(' ');
 }
 
 async function fetchAllAssets(): Promise<RuntimeAsset[]> {
