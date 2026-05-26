@@ -38,6 +38,8 @@ pnpm --filter @image-garden/playview build
 
 In production, Studio serves the built Playview files as configured static assets. Playview 0.1.x requires `@image-garden/viewer` ^0.1.0 and Image Garden Studio API 0.1, exposed by `image-garden-studio` 0.1.x.
 
+Set `VITE_HOSTED_PRODUCTION=true` for backend-free hosted builds. It removes local/backend menu actions such as reimport, open data, clear data, and debug, while keeping camera controls, ambience, and credits visible.
+
 In development, Playview expects the same local API shape exposed by Studio:
 
 - `GET /api/status` with `studioApiVersion: "0.1"`

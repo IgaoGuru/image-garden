@@ -135,6 +135,8 @@ const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
 const minTutorialStepMs = 5_500;
 const assetPageSize = 5_000;
+const HOSTED_PRODUCTION = import.meta.env.VITE_HOSTED_PRODUCTION === 'true';
+const backendOnlyHostedMenuActions = new Set(['reimport', 'open-data', 'clear-data', 'debug']);
 const defaultLayoutTuning: LayoutTuning = {
   scale: 7,
   duplicateJitter: true,
@@ -156,6 +158,7 @@ let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
 
 window.imageGardenDebug = readDebugSnapshot;
 
+if (HOSTED_PRODUCTION) document.body.classList.add('hosted-production');
 setupLayoutControls();
 setupWindAmbience();
 
@@ -317,6 +320,7 @@ function installGlobalHandlers(): void {
   });
 
   document.addEventListener('keydown', (event) => {
+    if (HOSTED_PRODUCTION) return;
     if (event.key.toLowerCase() !== 'l' || !event.shiftKey) return;
     if (!isPlayviewVisible()) return;
     event.preventDefault();
@@ -342,6 +346,7 @@ function installGlobalHandlers(): void {
 }
 
 async function handleMenuAction(action: string): Promise<void> {
+  if (HOSTED_PRODUCTION && backendOnlyHostedMenuActions.has(action)) return;
   if (action === 'close') hideMenu();
   if (action === 'reset-camera') { viewerInstance?.resetCamera(); hideMenu(); }
   if (action === 'fit-constellation') { viewerInstance?.fitToContent(); hideMenu(); startTutorial(); }

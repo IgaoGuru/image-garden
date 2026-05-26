@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Constellation</title>
+    <title>Whole Earth Garden</title>
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
   </head>
   <body>
     <main id="viewer"></main>
@@ -25,13 +26,24 @@
           <div class="menu-panel" role="dialog" aria-label="menu">
             <button type="button" data-menu="reset-camera">reset camera</button>
             <button type="button" data-menu="fit-constellation">fit constellation</button>
-            <button type="button" data-menu="reimport">reimport last folder</button>
-            <button type="button" data-menu="open-data">open data folder</button>
-            <button type="button" data-menu="clear-data">clear data</button>
-            <button type="button" data-menu="debug">debug status</button>
+            <button type="button" data-menu="reimport" data-hosted-hidden>reimport last folder</button>
+            <button type="button" data-menu="open-data" data-hosted-hidden>open data folder</button>
+            <button type="button" data-menu="clear-data" data-hosted-hidden>clear data</button>
+            <button type="button" data-menu="debug" data-hosted-hidden>debug status</button>
             <button type="button" data-menu="close">close</button>
             <pre id="debug" class="debug"></pre>
           </div>
+          <aside class="menu-credits" aria-label="about Whole Earth Garden">
+            <h2>what is this</h2>
+            <p>This software allows you to fly through the pages of the Whole Earth Magazine, an old journal dedicated to collecting and spreading awareness of “soft tech”, or tech that augments human life instead of subsuming it. The pages are spread through 3D space based on their <a href="https://www.cloudflare.com/learning/ai/what-are-embeddings" target="_blank" rel="noopener noreferrer">embeddings</a>, which are vectors that show how deep learning models understand the text in these pages.</p>
+            <h2>why?</h2>
+            <p>I like software for exploring knowledge, and I’m a big fan of the early soft/humane tech movement.</p>
+            <h2>who made this?</h2>
+            <p>My name is Igor. You can find me <a href="https://falso.net" target="_blank" rel="noopener noreferrer">here</a>.</p>
+            <h2>alone?</h2>
+            <p>No. This project is based on the incredible efforts of <a href="https://wholeearth.info/" target="_blank" rel="noopener noreferrer">The Whole Earth Index</a> as well as Lucas Gelfond’s <a href="https://searchwhole.earth/" target="_blank" rel="noopener noreferrer">search-based archive</a>.</p>
+            <p>A special thanks to Lucas for generously sharing the base data for this visualization.</p>
+          </aside>
           <details id="layout-panel" class="layout-panel">
             <summary>layout tuning</summary>
             <div class="layout-controls">

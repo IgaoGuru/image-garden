@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_STATIC_TEXTURE_ARRAY_URL?: string;
   readonly VITE_STATIC_ATLAS_URL?: string;
   readonly VITE_DEV_MOCK_OCR?: string;
+  readonly VITE_HOSTED_PRODUCTION?: string;
 }
 
 interface ImportMeta {
