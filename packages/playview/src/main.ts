@@ -61,6 +61,8 @@ declare global {
 
 const status = mustQuery<HTMLElement>('#status');
 const helpText = mustQuery<HTMLElement>('#help-text');
+const loadingCover = mustQuery<HTMLElement>('#loading-cover');
+const loadingSpinner = mustQuery<HTMLElement>('#loading-spinner');
 const root = mustQuery<HTMLElement>('#viewer');
 const onboarding = mustQuery<HTMLElement>('#onboarding');
 const progress = mustQuery<HTMLElement>('#progress');
@@ -115,6 +117,8 @@ let helpTimer = 0;
 let idleTimer = 0;
 let debugTimer = 0;
 let spinnerFrame = 0;
+let loadingSpinnerFrame = 0;
+let loadingSpinnerTimer = 0;
 let wasPointerLocked = false;
 let tutorialActive = false;
 let tutorialTransitioning = false;
@@ -130,6 +134,7 @@ const tutorialSteps = [
   { id: 'menu', text: 'press <kbd>esc</kbd> to see the menu' },
 ] as const;
 const spinnerFrames = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠'];
+const loadingSpinnerFrames = ['|', '/', '-', '\\'];
 const progressLogEntries: string[] = [];
 const windVolumeStorageKey = 'constellation.windVolume';
 const windAmbienceUrl = '/audio/wind-ambience.mp3';
@@ -159,6 +164,7 @@ let layoutTuning: LayoutTuning = { ...defaultLayoutTuning };
 window.imageGardenDebug = readDebugSnapshot;
 
 if (HOSTED_PRODUCTION) document.body.classList.add('hosted-production');
+startLoadingSpinner();
 setupLayoutControls();
 setupWindAmbience();
 
@@ -208,10 +214,26 @@ async function boot(): Promise<void> {
     }
     installGlobalHandlers();
     scheduleIdleHelp();
+    hideLoadingCover();
   } catch (error) {
     status.textContent = `startup failed: ${errorMessage(error)}`;
     showOnboarding();
+    hideLoadingCover();
   }
+}
+
+function startLoadingSpinner(): void {
+  loadingSpinnerTimer = window.setInterval(() => {
+    loadingSpinnerFrame = (loadingSpinnerFrame + 1) % loadingSpinnerFrames.length;
+    loadingSpinner.textContent = loadingSpinnerFrames[loadingSpinnerFrame] ?? '|';
+  }, 120);
+}
+
+function hideLoadingCover(): void {
+  window.clearInterval(loadingSpinnerTimer);
+  loadingSpinnerTimer = 0;
+  loadingCover.classList.add('hidden');
+  loadingCover.setAttribute('aria-hidden', 'true');
 }
 
 async function fetchStaticAssets(): Promise<RuntimeAsset[]> {
