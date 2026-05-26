@@ -62,7 +62,9 @@ declare global {
 const status = mustQuery<HTMLElement>('#status');
 const helpText = mustQuery<HTMLElement>('#help-text');
 const loadingCover = mustQuery<HTMLElement>('#loading-cover');
+const loadingLabel = mustQuery<HTMLElement>('#loading-label');
 const loadingSpinner = mustQuery<HTMLElement>('#loading-spinner');
+const loadingProceed = mustQuery<HTMLButtonElement>('#loading-proceed');
 const root = mustQuery<HTMLElement>('#viewer');
 const onboarding = mustQuery<HTMLElement>('#onboarding');
 const progress = mustQuery<HTMLElement>('#progress');
@@ -214,11 +216,11 @@ async function boot(): Promise<void> {
     }
     installGlobalHandlers();
     scheduleIdleHelp();
-    hideLoadingCover();
+    showProceedGate();
   } catch (error) {
     status.textContent = `startup failed: ${errorMessage(error)}`;
     showOnboarding();
-    hideLoadingCover();
+    showProceedGate();
   }
 }
 
@@ -229,9 +231,17 @@ function startLoadingSpinner(): void {
   }, 120);
 }
 
-function hideLoadingCover(): void {
+function showProceedGate(): void {
   window.clearInterval(loadingSpinnerTimer);
   loadingSpinnerTimer = 0;
+  loadingLabel.classList.add('hidden');
+  loadingCover.classList.add('ready');
+  loadingProceed.classList.add('visible');
+  loadingProceed.addEventListener('click', hideLoadingCover, { once: true });
+  loadingProceed.focus();
+}
+
+function hideLoadingCover(): void {
   loadingCover.classList.add('hidden');
   loadingCover.setAttribute('aria-hidden', 'true');
 }
