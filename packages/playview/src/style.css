@@ -33,7 +33,7 @@ input[type="range"] { padding: 0; accent-color: #f6f1e8; }
 .loading-label { color: rgba(246,241,232,.72); font-size: 12px; letter-spacing: .02em; text-align: center; }
 .loading-label.hidden { display: none; }
 #loading-spinner { display: inline-block; width: 2ch; color: rgba(246,241,232,.9); text-align: left; }
-.loading-proceed { display: none; min-width: 120px; padding: 10px 14px; border: 1px solid rgba(246,241,232,.42); background: rgba(0,0,0,.84); box-shadow: 0 0 0 1px rgba(246,241,232,.08); color: rgba(246,241,232,.86); font-size: 12px; line-height: 1.2; text-align: center; }
+.loading-proceed { display: none; min-width: 120px; padding: 10px 14px; border: 1px solid rgba(246,241,232,.42); background: rgba(0,0,0,.98); box-shadow: 0 0 0 1px rgba(246,241,232,.08); color: rgba(246,241,232,.86); font-size: 12px; line-height: 1.2; text-align: center; }
 .loading-proceed.visible { display: block; }
 .mouse-icon { color: rgba(246,241,232,.82); }
 

@@ -126,6 +126,7 @@ let tutorialActive = false;
 let tutorialTransitioning = false;
 let tutorialIndex = 0;
 let tutorialStepStartedAt = 0;
+let pendingTutorialStart = false;
 
 const verticalTutorialKeys = new Set<string>();
 const tutorialSteps = [
@@ -209,7 +210,7 @@ async function boot(): Promise<void> {
     latestStatus = initialStatus;
     if (assets.length > 0) {
       mountViewer(assets);
-      startTutorial();
+      pendingTutorialStart = true;
     } else {
       status.textContent = '';
       showOnboarding();
@@ -244,6 +245,10 @@ function showProceedGate(): void {
 function hideLoadingCover(): void {
   loadingCover.classList.add('hidden');
   loadingCover.setAttribute('aria-hidden', 'true');
+  if (pendingTutorialStart) {
+    pendingTutorialStart = false;
+    startTutorial();
+  }
 }
 
 async function fetchStaticAssets(): Promise<RuntimeAsset[]> {
